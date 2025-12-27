@@ -1,4 +1,4 @@
-# Legal EASE - AI-Powered Legal Document Analysis
+# Legal EASE - AI-Powered Legal Document Analysis - https://lexi-simplify-822987556610.us-central1.run.app/
 
 Transform complex legal documents into clear, actionable guidance with AI. Legal EASE helps you understand rental agreements, contracts, and terms of service before you sign.
 
