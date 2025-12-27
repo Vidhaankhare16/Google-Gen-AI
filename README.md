@@ -215,7 +215,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment guide
 - **WhatsApp Setup**: See [WHATSAPP_SETUP.md](WHATSAPP_SETUP.md)
 - **Issues**: Create an issue on GitHub
-- **Email**: support@legal-ease.com
 
 ## 🎯 Roadmap
 
