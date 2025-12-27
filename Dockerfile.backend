@@ -1,0 +1,37 @@
+# Backend-only Dockerfile for Legal EASE
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy Python requirements and install
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend source code
+COPY backend/ ./
+
+# Create a simple static directory with basic HTML
+RUN mkdir -p static && echo '<!DOCTYPE html><html><head><title>Legal EASE</title></head><body><h1>Legal EASE - Legal Document AI</h1><p>Backend is running. Frontend will be added shortly.</p><p><a href="/api/health">Health Check</a></p></body></html>' > static/index.html
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Start the application
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "300", "app:app"]

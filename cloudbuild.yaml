@@ -1,0 +1,48 @@
+# Google Cloud Build configuration for Lexi Simplify
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID',
+      '-t', 'gcr.io/$PROJECT_ID/lexi-simplify:latest',
+      '.'
+    ]
+
+  # Push the Docker image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lexi-simplify:latest']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'lexi-simplify',
+      '--image', 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--memory', '2Gi',
+      '--cpu', '1',
+      '--timeout', '300',
+      '--concurrency', '10',
+      '--max-instances', '10',
+      '--set-env-vars', 'FLASK_ENV=production,MAX_FILE_SIZE=10485760,SESSION_TIMEOUT=3600',
+      '--set-env-vars', 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_LOCATION=us-central1'
+    ]
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/lexi-simplify:latest'
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: '100'
+
+# Timeout for the entire build
+timeout: '1200s'
