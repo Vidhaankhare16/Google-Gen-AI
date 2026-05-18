@@ -1,9 +1,13 @@
 import io
+import base64
 import logging
+import requests
 from typing import Tuple, Optional
 import PyPDF2
 import pdfplumber
 from werkzeug.datastructures import FileStorage
+
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +51,16 @@ class PDFProcessor:
                 logger.info(f"Successfully extracted {len(text)} characters using PyPDF2")
                 return True, text, None
             
-            # If both methods failed or produced insufficient text
-            if len(text.strip()) < self.min_text_length:
-                return False, "", "Document appears to be empty or contains only images"
-            
-            return False, "", error or "Failed to extract text from PDF"
-            
+            # Fallback: use Gemini Vision OCR for scanned/image-based PDFs
+            if Config.GEMINI_API_KEY:
+                file.seek(0)
+                success, text, error = self._extract_with_gemini_vision(file)
+                if success and len(text.strip()) >= self.min_text_length:
+                    logger.info(f"Successfully extracted {len(text)} characters using Gemini Vision OCR")
+                    return True, text, None
+
+            return False, "", "Document appears to be a scanned PDF with no extractable text"
+
         except Exception as e:
             logger.error(f"PDF extraction error: {str(e)}")
             return False, "", f"Error processing PDF: {str(e)}"
@@ -153,6 +161,69 @@ class PDFProcessor:
             logger.error(f"PyPDF2 extraction error: {str(e)}")
             return False, "", f"PyPDF2 error: {str(e)}"
     
+    def _extract_with_gemini_vision(self, file: FileStorage) -> Tuple[bool, str, Optional[str]]:
+        """Extract text from scanned PDFs using Gemini Vision API (OCR fallback)"""
+        try:
+            import fitz  # PyMuPDF
+
+            api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+            file_bytes = io.BytesIO(file.read())
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+
+            total_pages = len(doc)
+            pages_to_process = min(total_pages, self.max_pages)
+            extracted_text = []
+
+            for page_num in range(pages_to_process):
+                try:
+                    page = doc[page_num]
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+                    img_base64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+
+                    payload = {
+                        "contents": [{
+                            "parts": [
+                                {"text": "Extract all text from this document page. Return only the extracted text, preserving the original layout."},
+                                {"inline_data": {"mime_type": "image/png", "data": img_base64}}
+                            ]
+                        }]
+                    }
+
+                    response = requests.post(
+                        f"{api_url}?key={Config.GEMINI_API_KEY}",
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
+                        timeout=60
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        candidates = result.get("candidates", [])
+                        if candidates:
+                            text = candidates[0]["content"]["parts"][0]["text"]
+                            extracted_text.append(f"--- Page {page_num + 1} ---\n{text}\n")
+                            logger.info(f"Gemini Vision OCR: extracted page {page_num + 1}")
+                    else:
+                        logger.error(f"Gemini Vision API error {response.status_code}: {response.text}")
+
+                except Exception as e:
+                    logger.warning(f"Vision OCR failed for page {page_num + 1}: {str(e)}")
+                    continue
+
+            doc.close()
+            full_text = "\n".join(extracted_text)
+
+            if len(full_text.strip()) < self.min_text_length:
+                return False, "", "Gemini Vision could not extract text from this document"
+
+            return True, full_text, None
+
+        except ImportError:
+            return False, "", "PyMuPDF not available for vision-based extraction"
+        except Exception as e:
+            logger.error(f"Gemini Vision extraction error: {str(e)}")
+            return False, "", f"Vision extraction error: {str(e)}"
+
     def extract_text_from_bytes(self, pdf_bytes: bytes) -> str:
         """
         Extract text from PDF bytes (for WhatsApp integration)
