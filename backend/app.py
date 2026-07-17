@@ -34,8 +34,12 @@ def create_app():
         logger.error(f"Configuration error: {e}")
         raise
     
-    # Enable CORS for frontend communication
-    CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
+    # In production the frontend is served by Flask (same origin), so CORS only
+    # matters for external API callers. In development we proxy from port 3000.
+    if Config.FLASK_ENV == 'production':
+        CORS(app)
+    else:
+        CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
     
     # Register WhatsApp blueprint
     try:
@@ -193,7 +197,9 @@ def create_app():
                     'summary': analysis_result.get('summary', 'Analysis completed'),
                     'key_points': analysis_result.get('key_points', []),
                     'warnings': analysis_result.get('warnings', []),
-                    'document_id': document_id
+                    'document_id': document_id,
+                    'risk_score': analysis_result.get('risk_score', 5),
+                    'document_type': analysis_result.get('document_type', 'Legal Document'),
                 },
                 'document_info': {
                     'filename': safe_filename,

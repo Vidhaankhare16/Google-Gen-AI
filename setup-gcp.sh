@@ -1,115 +1,78 @@
 #!/bin/bash
+# setup-gcp.sh — One-time GCP project setup for Legal EASE
+# Run once before your first deploy: bash setup-gcp.sh
+set -euo pipefail
 
-# Google Cloud Platform setup script for Lexi Simplify
-set -e
+PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+REGION="${REGION:-us-central1}"
+REPO_NAME="legal-ease"
 
-# Configuration
-PROJECT_ID=${GOOGLE_CLOUD_PROJECT:-"your-project-id"}
-REGION=${REGION:-"us-central1"}
-SERVICE_ACCOUNT_NAME="lexi-simplify-sa"
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+log()     { echo -e "${BLUE}[setup]${NC} $1"; }
+success() { echo -e "${GREEN}✅  $1${NC}"; }
+die()     { echo -e "${RED}❌  $1${NC}"; exit 1; }
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+[[ -z "${PROJECT_ID:-}" ]] && die "Set GOOGLE_CLOUD_PROJECT or run: gcloud config set project YOUR_PROJECT_ID"
+command -v gcloud >/dev/null 2>&1 || die "gcloud CLI not found: https://cloud.google.com/sdk/docs/install"
 
-echo -e "${GREEN}🔧 Setting up Google Cloud Platform for Lexi Simplify${NC}"
+echo ""
+echo -e "${GREEN}🔧 Setting up GCP for Legal EASE${NC}"
+echo -e "   Project: ${YELLOW}$PROJECT_ID${NC}  Region: ${YELLOW}$REGION${NC}"
+echo ""
 
-# Check if project ID is set
-if [ "$PROJECT_ID" = "your-project-id" ]; then
-    echo -e "${RED}❌ Please set GOOGLE_CLOUD_PROJECT environment variable${NC}"
-    exit 1
-fi
+gcloud config set project "$PROJECT_ID" --quiet
 
-echo -e "${YELLOW}📋 Configuration:${NC}"
-echo "  Project ID: $PROJECT_ID"
-echo "  Region: $REGION"
-echo "  Service Account: $SERVICE_ACCOUNT_NAME"
+# Enable APIs
+log "Enabling APIs..."
+gcloud services enable \
+    cloudbuild.googleapis.com \
+    run.googleapis.com \
+    artifactregistry.googleapis.com \
+    secretmanager.googleapis.com \
+    --quiet
+success "APIs enabled"
 
-# Set the project
-echo -e "${YELLOW}🎯 Setting project...${NC}"
-gcloud config set project $PROJECT_ID
-
-# Enable required APIs
-echo -e "${YELLOW}🔧 Enabling required APIs...${NC}"
-gcloud services enable cloudbuild.googleapis.com
-gcloud services enable run.googleapis.com
-gcloud services enable containerregistry.googleapis.com
-gcloud services enable aiplatform.googleapis.com
-gcloud services enable secretmanager.googleapis.com
-
-# Create service account for the application
-echo -e "${YELLOW}👤 Creating service account...${NC}"
-gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
-    --display-name="Lexi Simplify Service Account" \
-    --description="Service account for Lexi Simplify application" || true
-
-# Grant necessary permissions to the service account
-echo -e "${YELLOW}🔐 Granting permissions...${NC}"
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/aiplatform.user"
-
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/secretmanager.secretAccessor"
-
-# Create a secret for Gemini API key (optional)
-echo -e "${YELLOW}🔑 Creating secret for Gemini API key...${NC}"
-echo "Please enter your Gemini API key (or press Enter to skip):"
-read -s GEMINI_API_KEY
-
-if [ ! -z "$GEMINI_API_KEY" ]; then
-    echo -n "$GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
-        --data-file=- \
-        --replication-policy="automatic" || true
-    
-    # Grant access to the secret
-    gcloud secrets add-iam-policy-binding gemini-api-key \
-        --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
-        --role="roles/secretmanager.secretAccessor"
-    
-    echo -e "${GREEN}✅ Gemini API key stored in Secret Manager${NC}"
+# Create Artifact Registry repository
+log "Creating Artifact Registry repository..."
+if ! gcloud artifacts repositories describe "$REPO_NAME" --location="$REGION" --quiet 2>/dev/null; then
+    gcloud artifacts repositories create "$REPO_NAME" \
+        --repository-format=docker \
+        --location="$REGION" \
+        --description="Legal EASE Docker images" \
+        --quiet
+    success "Created repository: $REPO_NAME"
 else
-    echo -e "${YELLOW}⚠️  Skipping Gemini API key setup. You can add it later.${NC}"
+    log "Repository already exists."
 fi
 
-# Set up Cloud Build trigger (optional)
-echo -e "${YELLOW}🏗️  Setting up Cloud Build trigger...${NC}"
-read -p "Do you want to set up automatic deployment with Cloud Build? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # This would require a connected repository
-    echo -e "${YELLOW}ℹ️  To set up Cloud Build trigger:${NC}"
-    echo "  1. Connect your repository to Cloud Build"
-    echo "  2. Create a trigger using cloudbuild.yaml"
-    echo "  3. Configure trigger to run on push to main branch"
+# Store GEMINI_API_KEY in Secret Manager
+echo ""
+echo -e "${YELLOW}Enter your Gemini API key (input hidden):${NC}"
+read -rs GEMINI_KEY
+echo ""
+
+if [[ -n "$GEMINI_KEY" ]]; then
+    if gcloud secrets describe gemini-api-key --quiet 2>/dev/null; then
+        echo -n "$GEMINI_KEY" | gcloud secrets versions add gemini-api-key --data-file=- --quiet
+        success "Updated gemini-api-key secret"
+    else
+        echo -n "$GEMINI_KEY" | gcloud secrets create gemini-api-key \
+            --data-file=- --replication-policy=automatic --quiet
+        success "Created gemini-api-key secret"
+    fi
+else
+    log "Skipping API key setup. Run again or create manually."
 fi
 
-# Create a sample environment file
-echo -e "${YELLOW}📝 Creating sample environment file...${NC}"
-cat > .env.production << EOF
-# Production environment variables for Lexi Simplify
-GOOGLE_CLOUD_PROJECT=$PROJECT_ID
-VERTEX_AI_LOCATION=$REGION
-FLASK_ENV=production
-MAX_FILE_SIZE=10485760
-SESSION_TIMEOUT=3600
-PORT=8080
+# Grant Cloud Run SA access to secret
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+COMPUTE_SA="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+log "Granting secret access to Cloud Run service account ($COMPUTE_SA)..."
+gcloud secrets add-iam-policy-binding gemini-api-key \
+    --member="serviceAccount:$COMPUTE_SA" \
+    --role="roles/secretmanager.secretAccessor" \
+    --quiet 2>/dev/null || log "IAM binding already exists or secret not created — skipping."
+success "Setup complete!"
 
-# Uncomment and set if using Gemini API directly
-# GEMINI_API_KEY=your-gemini-api-key-here
-EOF
-
-echo -e "${GREEN}✅ Google Cloud Platform setup completed!${NC}"
-echo -e "${YELLOW}📝 Next steps:${NC}"
-echo "  1. Review the .env.production file and update as needed"
-echo "  2. Run ./deploy.sh to deploy the application"
-echo "  3. Configure your domain and SSL certificate if needed"
-echo "  4. Set up monitoring and alerting"
-
-echo -e "${YELLOW}🔗 Useful commands:${NC}"
-echo "  Deploy: ./deploy.sh"
-echo "  View logs: gcloud run services logs tail lexi-simplify --region=$REGION"
-echo "  Update service: gcloud run services update lexi-simplify --region=$REGION"
+echo ""
+echo -e "${YELLOW}Next step: run  bash deploy.sh  to build and deploy.${NC}"

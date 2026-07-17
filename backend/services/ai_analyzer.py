@@ -33,7 +33,7 @@ class AIAnalyzer:
         try:
             if self.gemini_api_key:
                 # Use direct REST API calls to Gemini 2.0 Flash
-                self.api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+                self.api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
                 self.use_gemini_api = True
                 logger.info("✅ Initialized Gemini 2.0 Flash API client - Real AI analysis enabled!")
             else:
@@ -161,6 +161,8 @@ Content: {document_text}
 
 Please provide your analysis in the following JSON format:
 {{
+    "document_type": "The specific type of legal document (e.g., NDA, Employment Contract, Lease Agreement, Service Agreement, Terms of Service, Loan Agreement, Partnership Agreement, etc.)",
+    "risk_score": <integer from 1 to 10, where 1=very favorable/safe, 5=neutral/balanced, 10=very risky/unfavorable>,
     "summary": "A clear, plain English summary of the document's main purpose and key terms (2-3 sentences)",
     "key_points": [
         "First important clause or term explained in simple language",
@@ -170,19 +172,20 @@ Please provide your analysis in the following JSON format:
         "Fifth important clause or term explained in simple language"
     ],
     "warnings": [
-        "Any potentially unfavorable or concerning clauses",
-        "Unusual terms that might disadvantage the user",
-        "Important deadlines or obligations to note"
+        "[HIGH] Any critical or very concerning clauses that could seriously disadvantage the user",
+        "[MEDIUM] Moderately concerning terms or unusual clauses to be aware of",
+        "[LOW] Minor things to note or understand"
     ]
 }}
 
 Focus on:
 1. Making complex legal language understandable
 2. Identifying the most important terms and obligations
-3. Highlighting potential risks or unfavorable conditions
+3. Highlighting potential risks - prefix each warning with [HIGH], [MEDIUM], or [LOW]
 4. Explaining what the user is agreeing to in plain English
+5. Assigning an accurate risk_score based on overall favorability of the terms
 
-Respond only with the JSON format above.
+Respond only with the JSON format above, no extra text.
 """
     
     def _get_qa_prompt(self) -> str:
@@ -300,7 +303,9 @@ Respond only with the JSON format above.
                     logger.error("No candidates in API response")
                     return "Error: No response generated"
             else:
-                logger.error(f"API call failed with status {response.status_code}: {response.text}")
+                logger.error(f"API call failed with status {response.status_code}: {response.text[:500]}")
+                if response.status_code == 404:
+                    logger.error("404 likely means the model name is incorrect or not available in your region")
                 return f"Error: API call failed ({response.status_code})"
                 
         except Exception as e:

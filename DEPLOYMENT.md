@@ -1,247 +1,248 @@
-# Lexi Simplify - Deployment Guide
+# Legal EASE — Deployment Guide
 
-This guide will help you deploy the Lexi Simplify legal document AI platform to Google Cloud Run.
+Deploy the Legal EASE AI legal document analysis platform to Google Cloud Run.
+
+## Architecture
+
+- **Frontend**: React 18 + TypeScript, built into Flask's `static/` folder
+- **Backend**: Flask 3 + Gunicorn, served on port 8080
+- **AI**: Gemini `gemini-2.0-flash` via Google AI REST API
+- **Infrastructure**: Cloud Run (serverless), Artifact Registry, Secret Manager, Cloud Build
+
+---
 
 ## Prerequisites
 
-- Google Cloud Platform account
-- Google Cloud CLI (`gcloud`) installed and configured
-- Docker installed locally
-- Node.js 18+ and Python 3.11+ for local development
+| Tool | Purpose | Required |
+|---|---|---|
+| `gcloud` CLI | Deploy and manage GCP resources | Yes |
+| Google Cloud account | Billing-enabled GCP project | Yes |
+| Gemini API key | AI analysis ([get one here](https://aistudio.google.com/app/apikey)) | Yes |
+| Docker Desktop | Local testing only | No (Cloud Build handles CI/CD) |
+| Node.js 20+ / Python 3.11+ | Local development only | No |
 
-## Quick Deployment
+> **Windows users**: Run `.sh` scripts in Git Bash, WSL, or Google Cloud Shell. PowerShell is not supported for these scripts.
 
-### 1. Google Cloud Setup
+---
+
+## Quick Deploy (5 minutes)
+
+### Step 1 — One-time GCP setup
 
 ```bash
-# Set your project ID
 export GOOGLE_CLOUD_PROJECT="your-project-id"
-
-# Run the GCP setup script
-chmod +x setup-gcp.sh
-./setup-gcp.sh
+bash setup-gcp.sh
 ```
 
-This script will:
-- Enable required APIs (Vertex AI, Cloud Run, Cloud Build)
-- Create a service account with proper permissions
-- Generate a service account key
+This script:
+- Enables required APIs (Cloud Build, Cloud Run, Artifact Registry, Secret Manager)
+- Creates an Artifact Registry Docker repository named `legal-ease`
+- Prompts for your Gemini API key and stores it in Secret Manager
+- Grants the Cloud Run service account access to the secret
 
-### 2. Configure Environment
+### Step 2 — Configure local environment
 
 ```bash
-# Copy environment template
 cp backend/.env.example backend/.env
-
-# Edit the .env file with your settings
-nano backend/.env
 ```
 
-Required environment variables:
+Edit `backend/.env` — only one variable is required:
+
 ```bash
-GOOGLE_CLOUD_PROJECT=your-project-id
-VERTEX_AI_LOCATION=us-central1
-GEMINI_API_KEY=your-gemini-api-key  # Optional, can use Vertex AI instead
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+Optional variables (defaults shown):
+
+```bash
 FLASK_ENV=production
-MAX_FILE_SIZE=10485760
 PORT=8080
+MAX_FILE_SIZE=10485760   # 10 MB
+SESSION_TIMEOUT=3600     # 1 hour
 ```
 
-### 3. Deploy to Google Cloud Run
+### Step 3 — Deploy
 
 ```bash
-# Make deployment script executable
-chmod +x deploy.sh
-
-# Deploy to Google Cloud Run
-./deploy.sh
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+bash deploy.sh
 ```
 
-The deployment script will:
-- Build the Docker container
-- Push to Google Container Registry
-- Deploy to Cloud Run with proper configuration
-- Set up environment variables and scaling
+The deploy script:
+1. Enables all required GCP APIs
+2. Creates the Artifact Registry repo if it doesn't exist
+3. Reads `GEMINI_API_KEY` from `backend/.env` and stores it in Secret Manager
+4. Submits a remote Docker build via **Cloud Build** (no local Docker required)
+5. Deploys to Cloud Run and injects the API key from Secret Manager at runtime
+6. Prints the live service URL on success
 
-### 4. Verify Deployment
-
-After deployment, test your application:
+### Step 4 — Verify
 
 ```bash
 # Get the service URL
-gcloud run services describe lexi-simplify --region=us-central1 --format="value(status.url)"
+gcloud run services describe legal-ease --region=us-central1 --format="value(status.url)"
 
-# Test health endpoint
-curl https://your-service-url/api/health
+# Test the health endpoint
+curl https://YOUR_SERVICE_URL/api/health
 ```
+
+---
+
+## CI/CD with Cloud Build
+
+`cloudbuild.yaml` defines an automated pipeline triggered on every push to `main`.
+
+**To connect:**
+1. Go to Cloud Build → Triggers → Connect Repository
+2. Select your GitHub repo
+3. Set trigger: push to `main` branch, config file `cloudbuild.yaml`
+4. Set substitutions if needed:
+   - `_REGION`: e.g. `us-central1` (default)
+   - `_SERVICE_NAME`: `legal-ease` (default)
+
+The pipeline builds a versioned image (`$BUILD_ID` tag) plus `latest`, pushes both to Artifact Registry, and deploys to Cloud Run.
+
+---
+
+## Manual Cloud Run service definition
+
+To apply `cloud-run-service.yaml` directly (useful for fine-grained config changes without a full rebuild):
+
+```bash
+# Replace placeholders first
+sed -i "s/PROJECT_ID/your-project-id/g; s/REGION/us-central1/g" cloud-run-service.yaml
+
+gcloud run services replace cloud-run-service.yaml --region=us-central1
+```
+
+---
 
 ## Local Development
 
-### 1. Install Dependencies
+### Option A — Docker Compose (closest to production)
 
 ```bash
-# Backend
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Frontend
-cd ../frontend
-npm install
+# Requires backend/.env with GEMINI_API_KEY set
+docker-compose up --build
 ```
 
-### 2. Run Locally
+Open: http://localhost:8080
 
+### Option B — Run services separately
+
+**Terminal 1 — Backend**
 ```bash
-# Option 1: Using Docker Compose (Recommended)
-docker-compose up --build
-
-# Option 2: Run services separately
-# Terminal 1 - Backend
 cd backend
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 python app.py
+```
 
-# Terminal 2 - Frontend
+Backend runs on http://localhost:8080
+
+**Terminal 2 — Frontend dev server**
+```bash
 cd frontend
+npm install
 npm start
 ```
 
-### 3. Test Locally
+Frontend runs on http://localhost:3000 and proxies API calls to port 8080.
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
-- Health Check: http://localhost:5000/api/health
+---
 
-## Configuration Options
+## Cloud Run configuration
 
-### Google Cloud AI
+| Setting | Value |
+|---|---|
+| Region | us-central1 |
+| CPU | 1 vCPU |
+| Memory | 2 GB |
+| Concurrency | 50 req/instance |
+| Min instances | 0 (scales to zero) |
+| Max instances | 10 |
+| Request timeout | 300 s |
+| Execution environment | gen2 (faster cold start) |
 
-You can use either:
+To change these, edit the `gcloud run deploy` flags in `deploy.sh` or the container spec in `cloud-run-service.yaml`.
 
-1. **Vertex AI** (Recommended for production):
-   - Set `GOOGLE_CLOUD_PROJECT` and `VERTEX_AI_LOCATION`
-   - Uses service account authentication
+---
 
-2. **Gemini API** (Easier for development):
-   - Set `GEMINI_API_KEY`
-   - Direct API access
+## Rate limits
 
-### Scaling Configuration
+| Endpoint | Limit |
+|---|---|
+| `POST /api/analyze` | 5 requests per 5 minutes |
+| `POST /api/question` | 20 requests per 5 minutes |
 
-The Cloud Run service is configured with:
-- **CPU**: 1 vCPU
-- **Memory**: 2GB
-- **Concurrency**: 10 requests per instance
-- **Auto-scaling**: 0 to 10 instances
-- **Timeout**: 300 seconds
+---
 
-Modify `cloud-run-service.yaml` to adjust these settings.
-
-### Security Features
-
-- HTTPS enforcement
-- CORS configuration
-- Rate limiting (5 uploads per 5 minutes, 20 questions per 5 minutes)
-- File validation and sanitization
-- Automatic document cleanup
-
-## Monitoring
-
-### Health Checks
-
-- **Endpoint**: `/api/health`
-- **Google Cloud**: Automatic health checks configured
-- **Monitoring**: Built-in performance metrics
-
-### Logs
+## Monitoring & Logs
 
 ```bash
-# View application logs
-gcloud logs read --service=lexi-simplify --limit=50
+# Tail live logs
+gcloud run services logs tail legal-ease --region=us-central1
 
-# Stream logs in real-time
-gcloud logs tail --service=lexi-simplify
+# Read recent logs
+gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="legal-ease"' \
+  --limit=50 --format="table(timestamp, textPayload)"
 ```
 
-### Metrics
+Health check endpoint: `GET /api/health` — returns `{"status":"healthy",...}` with HTTP 200.
 
-Access metrics at `/api/health` or through Google Cloud Monitoring:
-- Request count and success rate
-- Response times
-- System resource usage
-- Document processing statistics
+---
 
 ## Troubleshooting
 
-### Common Issues
+### 404 from Gemini API
+The model name is incorrect or not available in your region. Current model: `gemini-2.0-flash`. Check [Google AI Studio](https://aistudio.google.com/) for available models.
 
-1. **Authentication Errors**:
-   ```bash
-   # Verify service account key
-   gcloud auth application-default login
-   ```
-
-2. **API Quota Exceeded**:
-   - Check Google Cloud Console for API quotas
-   - Consider upgrading to paid tier
-
-3. **Memory Issues**:
-   - Increase Cloud Run memory allocation
-   - Optimize PDF processing for large files
-
-4. **Build Failures**:
-   ```bash
-   # Check deployment readiness
-   python check-deployment.py
-   
-   # Test Docker build locally
-   docker build -t lexi-simplify .
-   ```
-
-### Debug Mode
-
-For development debugging:
-
+### `GEMINI_API_KEY` not found in Cloud Run
+Verify the secret exists and the service account has access:
 ```bash
-# Set debug environment
-export FLASK_ENV=development
-
-# Enable verbose logging
-export FLASK_DEBUG=1
+gcloud secrets describe gemini-api-key
+PROJECT_NUMBER=$(gcloud projects describe $GOOGLE_CLOUD_PROJECT --format="value(projectNumber)")
+gcloud secrets get-iam-policy gemini-api-key
 ```
 
-## Cost Optimization
+### Build fails — `libmagic` not found
+This is installed in the Dockerfile via `apt-get install -y libmagic1`. If you see this error locally (not in Cloud Build), ensure your local Docker image is rebuilt:
+```bash
+docker-compose build --no-cache
+```
 
-- **Cloud Run**: Pay only for requests (scales to zero)
-- **Vertex AI**: Pay per API call
-- **Storage**: Temporary in-memory storage (no persistent costs)
+### App crashes on startup — missing `GEMINI_API_KEY`
+Only `GEMINI_API_KEY` is required. Verify `backend/.env` contains it and is not the placeholder value.
 
-Estimated costs for moderate usage:
-- Cloud Run: $5-20/month
-- Vertex AI: $10-50/month depending on usage
-- Total: ~$15-70/month
+### Frontend changes not reflected
+The React app is built into `backend/static/` during the Docker build. If you changed frontend code, rebuild the image:
+```bash
+bash deploy.sh
+```
 
-## Security Best Practices
+---
 
-1. **Environment Variables**: Never commit `.env` files
-2. **Service Account**: Use minimal required permissions
-3. **HTTPS**: Always enabled in production
-4. **Rate Limiting**: Configured to prevent abuse
-5. **Input Validation**: All user inputs are validated and sanitized
+## Cost estimate (moderate usage)
 
-## Support
+| Service | Estimated cost |
+|---|---|
+| Cloud Run | $0–10/month (scales to zero) |
+| Cloud Build | ~$0.003/build-minute, first 120 min/day free |
+| Artifact Registry | ~$0.10/GB stored |
+| Secret Manager | ~$0.06/10k API operations |
+| Gemini API | Pay-per-use (free tier available) |
+| **Total** | **~$5–20/month** |
 
-For issues or questions:
-1. Check the logs: `gcloud logs read --service=lexi-simplify`
-2. Verify configuration: `python check-deployment.py`
-3. Test locally: `docker-compose up --build`
+---
 
-## Next Steps
+## Security
 
-After successful deployment:
-1. Set up custom domain (optional)
-2. Configure monitoring alerts
-3. Implement user authentication (for production)
-4. Add document persistence (for production)
-5. Scale based on usage patterns
+- GEMINI_API_KEY stored in **Secret Manager**, never in environment variables at build time
+- HTTPS enforced in production via `require_https()` decorator
+- Rate limiting on all write endpoints
+- All file uploads validated (PDF-only, 10 MB max, magic-byte check)
+- Container runs as non-root user (UID 1000)
+- All Linux capabilities dropped
+- Security headers added to every response (CSP, X-Frame-Options, etc.)
+- `.env` files are in `.gitignore` and `.dockerignore`

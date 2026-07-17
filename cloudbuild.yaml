@@ -1,48 +1,84 @@
-# Google Cloud Build configuration for Lexi Simplify
+# cloudbuild.yaml — CI/CD pipeline for Legal EASE
+# Triggered automatically on push to main branch (configure in Cloud Build console)
+#
+# Required substitutions (set in trigger config):
+#   _REGION       : e.g. us-central1
+#   _SERVICE_NAME : legal-ease
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE_NAME: legal-ease
+  _REPO_NAME: legal-ease
+
 steps:
-  # Build the Docker image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'build',
-      '-t', 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID',
-      '-t', 'gcr.io/$PROJECT_ID/lexi-simplify:latest',
-      '.'
-    ]
+  # 1. Build Docker image
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:$BUILD_ID
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:latest
+      - .
 
-  # Push the Docker image to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID']
+  # 2. Push versioned tag
+  - name: gcr.io/cloud-builders/docker
+    id: push-versioned
+    waitFor: [build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:$BUILD_ID
 
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/lexi-simplify:latest']
+  # 3. Push latest tag
+  - name: gcr.io/cloud-builders/docker
+    id: push-latest
+    waitFor: [build]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:latest
 
-  # Deploy to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
-    args: [
-      'run', 'deploy', 'lexi-simplify',
-      '--image', 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID',
-      '--region', 'us-central1',
-      '--platform', 'managed',
-      '--allow-unauthenticated',
-      '--memory', '2Gi',
-      '--cpu', '1',
-      '--timeout', '300',
-      '--concurrency', '10',
-      '--max-instances', '10',
-      '--set-env-vars', 'FLASK_ENV=production,MAX_FILE_SIZE=10485760,SESSION_TIMEOUT=3600',
-      '--set-env-vars', 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_LOCATION=us-central1'
-    ]
+  # 4. Deploy to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    waitFor: [push-versioned]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:$BUILD_ID
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --memory
+      - 2Gi
+      - --cpu
+      - "1"
+      - --timeout
+      - "300"
+      - --concurrency
+      - "50"
+      - --min-instances
+      - "0"
+      - --max-instances
+      - "10"
+      - --set-secrets
+      - GEMINI_API_KEY=gemini-api-key:latest
+      - --set-env-vars
+      - FLASK_ENV=production,MAX_FILE_SIZE=10485760,SESSION_TIMEOUT=3600,PORT=8080
+      - --quiet
 
-# Store images in Container Registry
 images:
-  - 'gcr.io/$PROJECT_ID/lexi-simplify:$BUILD_ID'
-  - 'gcr.io/$PROJECT_ID/lexi-simplify:latest'
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:$BUILD_ID
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_SERVICE_NAME}:latest
 
-# Build options
 options:
-  machineType: 'E2_HIGHCPU_8'
-  diskSizeGb: '100'
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: "100"
+  logging: CLOUD_LOGGING_ONLY
 
-# Timeout for the entire build
-timeout: '1200s'
+timeout: 1200s

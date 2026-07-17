@@ -1,93 +1,77 @@
+# cloud-run-service.yaml — Cloud Run service definition for Legal EASE
+#
+# Before applying, replace placeholders:
+#   PROJECT_ID → your GCP project ID
+#   REGION     → e.g. us-central1
+#
+# Apply with:
+#   gcloud run services replace cloud-run-service.yaml --region=REGION
+
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: lexi-simplify
+  name: legal-ease
   annotations:
     run.googleapis.com/ingress: all
-    run.googleapis.com/ingress-status: all
 spec:
   template:
     metadata:
       annotations:
-        # Resource allocation
-        run.googleapis.com/memory: "2Gi"
-        run.googleapis.com/cpu: "1"
-        
-        # Scaling configuration
-        autoscaling.knative.dev/maxScale: "10"
+        # Scaling
         autoscaling.knative.dev/minScale: "0"
-        
-        # Request timeout
-        run.googleapis.com/timeout: "300s"
-        
-        # Concurrency
+        autoscaling.knative.dev/maxScale: "10"
+        # Second-generation execution environment (better cold-start)
         run.googleapis.com/execution-environment: gen2
-        
-        # VPC connector (if needed for private resources)
-        # run.googleapis.com/vpc-access-connector: projects/PROJECT_ID/locations/REGION/connectors/CONNECTOR_NAME
-        
     spec:
-      containerConcurrency: 10
+      containerConcurrency: 50
       timeoutSeconds: 300
       containers:
-      - image: gcr.io/PROJECT_ID/lexi-simplify:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: FLASK_ENV
-          value: "production"
-        - name: GOOGLE_CLOUD_PROJECT
-          value: "PROJECT_ID"
-        - name: VERTEX_AI_LOCATION
-          value: "us-central1"
-        - name: MAX_FILE_SIZE
-          value: "10485760"
-        - name: SESSION_TIMEOUT
-          value: "3600"
-        - name: PORT
-          value: "8080"
-        # Uncomment to use Gemini API directly
-        # - name: GEMINI_API_KEY
-        #   valueFrom:
-        #     secretKeyRef:
-        #       name: gemini-api-key
-        #       key: key
-        
-        resources:
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-            
-        # Health check
-        livenessProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 10
-          
-        readinessProbe:
-          httpGet:
-            path: /api/health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          
-        # Security context
-        securityContext:
-          runAsNonRoot: true
-          runAsUser: 1000
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false
-          capabilities:
-            drop:
-            - ALL
-            
+        - image: REGION-docker.pkg.dev/PROJECT_ID/legal-ease/legal-ease:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: FLASK_ENV
+              value: production
+            - name: PORT
+              value: "8080"
+            - name: MAX_FILE_SIZE
+              value: "10485760"
+            - name: SESSION_TIMEOUT
+              value: "3600"
+            # GEMINI_API_KEY injected from Secret Manager at runtime
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: latest
+          resources:
+            limits:
+              memory: 2Gi
+              cpu: 1000m
+            requests:
+              memory: 512Mi
+              cpu: 250m
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
   traffic:
-  - percent: 100
-    latestRevision: true
+    - percent: 100
+      latestRevision: true

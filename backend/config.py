@@ -24,14 +24,6 @@ class Config:
     @staticmethod
     def validate_config():
         """Validate that required configuration is present"""
-        required_vars = ['GOOGLE_CLOUD_PROJECT']
-        missing_vars = []
-        
-        for var in required_vars:
-            if not getattr(Config, var):
-                missing_vars.append(var)
-        
-        if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-        
+        if not Config.GEMINI_API_KEY:
+            raise ValueError("Missing required environment variable: GEMINI_API_KEY")
         return True

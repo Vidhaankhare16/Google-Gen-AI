@@ -5,6 +5,8 @@ export interface AnalysisResult {
   key_points: string[];
   warnings: string[];
   document_id: string;
+  risk_score?: number;
+  document_type?: string;
 }
 
 export interface DocumentInfo {

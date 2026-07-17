@@ -1,61 +1,63 @@
-# Multi-stage build for Legal EASE
-# Stage 1: Build React frontend
-FROM node:18-alpine AS frontend-build
+# ── Stage 1: Build React frontend ──────────────────────────────────────────
+FROM node:20-alpine AS frontend-build
 
 WORKDIR /app/frontend
 
-# Copy package files
-COPY frontend/package.json ./
-COPY frontend/package-lock.json ./
+# Cache dependency layer separately from source
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production
+# Disable source maps to reduce build size and memory usage
+ENV GENERATE_SOURCEMAP=false
 
-# Copy frontend source
 COPY frontend/src ./src
 COPY frontend/public ./public
 COPY frontend/tsconfig.json ./
 
-# Build the React app
 RUN npm run build
 
-# Stage 2: Python backend with built frontend
+# ── Stage 2: Python backend + built frontend ────────────────────────────────
 FROM python:3.11-slim
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# System libraries:
+#   gcc/g++   – required for some pip packages
+#   curl      – health-check & runtime use
+#   libmagic1 – required by python-magic (file type detection)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     curl \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
 WORKDIR /app
 
-# Copy Python requirements
+# Install Python dependencies before copying source (better layer caching)
 COPY backend/requirements.txt ./
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend source code
+# Copy backend source
 COPY backend/ ./
 
-# Copy built frontend from previous stage
+# Copy React build output from Stage 1
 COPY --from=frontend-build /app/frontend/build ./static/
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
+# Run as non-root for security
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 8080
 
-# Start the application with Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "300", "--keep-alive", "2", "app:app"]
+# gunicorn: 2 workers is appropriate for Cloud Run (CPU-bound AI calls)
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:8080", \
+     "--workers", "2", \
+     "--timeout", "300", \
+     "--keep-alive", "5", \
+     "--access-logfile", "-", \
+     "app:app"]
