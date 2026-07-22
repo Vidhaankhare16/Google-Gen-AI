@@ -10,9 +10,11 @@ class DocumentStorage:
     In production, this would be replaced with a proper database or cloud storage
     """
     
-    def __init__(self, session_timeout: int = 3600):
+    def __init__(self, session_timeout: int = 3600, max_documents: int = 500):
         self.documents: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = session_timeout
+        self.max_documents = max_documents
+        self._evicted_count = 0
         self._lock = threading.Lock()
         
         # Start cleanup thread
@@ -34,6 +36,16 @@ class DocumentStorage:
         expires_at = datetime.utcnow() + timedelta(seconds=self.session_timeout)
         
         with self._lock:
+            # Evict inline instead of calling delete_document(). _lock is a plain
+            # Lock rather than an RLock, so re-acquiring it here would deadlock.
+            while len(self.documents) >= self.max_documents:
+                oldest_id = min(
+                    self.documents,
+                    key=lambda doc_id: self.documents[doc_id]['created_at']
+                )
+                del self.documents[oldest_id]
+                self._evicted_count += 1
+
             self.documents[document_id] = {
                 'text': text,
                 'filename': filename,
@@ -148,7 +160,8 @@ class DocumentStorage:
                 'newest_document': max(
                     (doc['created_at'] for doc in self.documents.values()),
                     default=None
-                )
+                ),
+                'evicted_count': self._evicted_count
             }
     
     def _start_cleanup_thread(self):
