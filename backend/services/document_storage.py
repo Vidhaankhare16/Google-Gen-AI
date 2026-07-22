@@ -13,6 +13,8 @@ class DocumentStorage:
     def __init__(self, session_timeout: int = 3600, max_documents: int = 500):
         self.documents: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = session_timeout
+        if max_documents < 1:
+            raise ValueError('max_documents must be at least 1')
         self.max_documents = max_documents
         self._evicted_count = 0
         self._lock = threading.Lock()
