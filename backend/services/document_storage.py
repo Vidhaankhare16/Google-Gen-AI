@@ -14,9 +14,20 @@ class DocumentStorage:
         self.documents: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = session_timeout
         self._lock = threading.Lock()
-        
+        # Optional callback invoked with a document_id whenever a document is removed (deleted or
+        # expired) so its vector-store chunks can be cleaned up too. Set by the app after wiring RAG.
+        self.on_evict = None
+
         # Start cleanup thread
         self._start_cleanup_thread()
+
+    def _evict(self, document_id: str) -> None:
+        """Notify the eviction callback (outside the lock) so vector chunks get cleaned up."""
+        if self.on_evict:
+            try:
+                self.on_evict(document_id)
+            except Exception:
+                pass
     
     def store_document(self, text: str, filename: str = None) -> str:
         """
@@ -55,18 +66,23 @@ class DocumentStorage:
             Document data or None if not found/expired
         """
         
+        expired = False
         with self._lock:
             if document_id not in self.documents:
                 return None
-            
+
             document = self.documents[document_id]
-            
+
             # Check if expired
             if datetime.utcnow() > document['expires_at']:
                 del self.documents[document_id]
-                return None
-            
-            return document.copy()
+                expired = True
+            else:
+                result = document.copy()
+        if expired:
+            self._evict(document_id)
+            return None
+        return result
     
     def update_analysis(self, document_id: str, analysis_result: Dict[str, Any]) -> bool:
         """
@@ -104,10 +120,12 @@ class DocumentStorage:
         """
         
         with self._lock:
-            if document_id in self.documents:
+            existed = document_id in self.documents
+            if existed:
                 del self.documents[document_id]
-                return True
-            return False
+        if existed:
+            self._evict(document_id)
+        return existed
     
     def cleanup_expired(self) -> int:
         """
@@ -127,7 +145,10 @@ class DocumentStorage:
             
             for doc_id in expired_ids:
                 del self.documents[doc_id]
-        
+
+        for doc_id in expired_ids:   # evict vectors outside the lock
+            self._evict(doc_id)
+
         return len(expired_ids)
     
     def get_stats(self) -> Dict[str, Any]:

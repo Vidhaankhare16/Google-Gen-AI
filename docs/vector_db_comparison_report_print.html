@@ -1,0 +1,741 @@
+<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+@page { size: A4; margin: 13mm; }
+@media print {
+  body { background:#fff !important; }
+  .chart,.tile,.card,.db,.callout,.ans .col,.scroll,.mast { box-shadow:none !important; }
+  .chart,.card,.db,.tile,.ans .col,table,.callout,.svgwrap { break-inside: avoid; }
+  h2,h3 { break-after: avoid; }
+  .mast { padding-top:8px !important; }
+  section { margin-top:34px !important; }
+  a { color:#0b0b0b !important; text-decoration:none; }
+}
+</style></head><body>
+<title>ChromaDB vs Qdrant — Legal EASE Vector DB Study</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --plane:#f9f9f7; --surface:#fcfcfb; --raise:#f3f2ee;
+    --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10);
+    --chroma:#2a78d6; --qdrant:#eb6834;
+    --good:#0ca30c; --warn:#b5790a; --crit:#d03b3b;
+    --track:#ece9e2;
+    --shadow:0 1px 2px rgba(11,11,11,.04), 0 8px 24px rgba(11,11,11,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --plane:#0d0d0d; --surface:#1a1a19; --raise:#232320;
+      --ink:#ffffff; --ink2:#c3c2b7; --muted:#8f8d86;
+      --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.11);
+      --chroma:#3987e5; --qdrant:#e9682f;
+      --good:#3cc13c; --warn:#fab219; --crit:#e66767;
+      --track:#26261f;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --plane:#0d0d0d; --surface:#1a1a19; --raise:#232320;
+    --ink:#ffffff; --ink2:#c3c2b7; --muted:#8f8d86;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.11);
+    --chroma:#3987e5; --qdrant:#e9682f;
+    --good:#3cc13c; --warn:#fab219; --crit:#e66767;
+    --track:#26261f;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--plane); color:var(--ink);
+    font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:16px; line-height:1.62; letter-spacing:-0.003em;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1020px; margin:0 auto; padding:0 22px 96px; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ---- rhythm ---- */
+  section { margin-top:64px; scroll-margin-top:20px; }
+  h2 { font-size:1.55rem; font-weight:750; letter-spacing:-0.02em; margin:0 0 6px; text-wrap:balance; }
+  h3 { font-size:1.12rem; font-weight:700; margin:26px 0 8px; letter-spacing:-0.01em; }
+  p { margin:10px 0; color:var(--ink2); max-width:70ch; }
+  strong { color:var(--ink); font-weight:650; }
+  .eyebrow { text-transform:uppercase; letter-spacing:.16em; font-size:.72rem; font-weight:700; color:var(--muted); }
+  .sec-eyebrow { color:var(--chroma); }
+  .lead { font-size:1.06rem; color:var(--ink2); max-width:72ch; }
+  a { color:var(--chroma); }
+  code { font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace; font-size:.86em;
+    background:var(--raise); padding:.1em .4em; border-radius:5px; border:1px solid var(--border); }
+
+  /* ---- masthead ---- */
+  .mast { padding:70px 0 20px; border-bottom:1px solid var(--border); }
+  .mast .rule { height:3px; width:54px; border-radius:3px;
+    background:linear-gradient(90deg,var(--chroma),var(--qdrant)); margin-bottom:22px; }
+  .mast h1 { font-size:clamp(2.1rem,5.4vw,3.15rem); font-weight:800; letter-spacing:-0.035em;
+    line-height:1.04; margin:0 0 12px; text-wrap:balance; }
+  .mast h1 .vs { color:var(--muted); font-weight:500; }
+  .mast .sub { font-size:1.12rem; color:var(--ink2); max-width:64ch; margin:0; }
+  .metabar { display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:22px; }
+  .chip { font-size:.78rem; font-weight:600; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:999px; padding:5px 11px; }
+  .chip b { color:var(--ink); }
+
+  /* ---- verdict tiles ---- */
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:26px; }
+  @media (max-width:820px){ .tiles{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:460px){ .tiles{ grid-template-columns:1fr; } }
+  .tile { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 16px 15px;
+    box-shadow:var(--shadow); position:relative; overflow:hidden; }
+  .tile::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--tc,var(--muted)); }
+  .tile .k { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; font-weight:700; color:var(--muted); }
+  .tile .v { font-size:1.32rem; font-weight:780; letter-spacing:-0.02em; margin:6px 0 3px; }
+  .tile .d { font-size:.82rem; color:var(--ink2); line-height:1.45; }
+  .win-chroma{ --tc:var(--chroma); } .win-qdrant{ --tc:var(--qdrant); } .win-tie{ --tc:var(--good); }
+  .win-split{ --tc:var(--warn); }
+
+  /* ---- cards / callouts ---- */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:22px 24px;
+    box-shadow:var(--shadow); }
+  .callout { border-radius:14px; padding:18px 20px; border:1px solid var(--border);
+    background:var(--raise); margin:20px 0; }
+  .callout.key { border-left:4px solid var(--chroma); }
+  .callout.warnc { border-left:4px solid var(--warn); }
+  .callout h3 { margin:0 0 6px; }
+
+  /* two-column database guide */
+  .duo { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:18px; }
+  @media (max-width:760px){ .duo{ grid-template-columns:1fr; } }
+  .db { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px 22px; box-shadow:var(--shadow); }
+  .db .badge { display:inline-flex; align-items:center; gap:8px; font-weight:750; font-size:1.15rem; letter-spacing:-0.01em; }
+  .dot { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .dot.c{ background:var(--chroma);} .dot.q{ background:var(--qdrant);}
+  .db .tag { font-size:.74rem; color:var(--muted); font-weight:600; margin-top:2px; }
+  .db p { font-size:.94rem; margin:12px 0; }
+  .db ul { margin:8px 0 0; padding-left:0; list-style:none; }
+  .db li { font-size:.88rem; color:var(--ink2); padding:4px 0 4px 22px; position:relative; }
+  .db li::before { position:absolute; left:0; top:3px; font-size:.85em; }
+  .db li.pro::before{ content:"▲"; color:var(--good); }
+  .db li.con::before{ content:"▼"; color:var(--crit); }
+
+  /* ---- bar charts ---- */
+  .chart { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px 22px; box-shadow:var(--shadow); margin-top:16px; }
+  .chart .ctitle { font-weight:700; font-size:1rem; }
+  .chart .cnote { font-size:.8rem; color:var(--muted); margin-top:1px; }
+  .metric { margin-top:16px; }
+  .metric:first-of-type { margin-top:14px; }
+  .metric .mname { font-size:.82rem; font-weight:650; color:var(--ink2); margin-bottom:7px; }
+  .brow { display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:10px; margin:5px 0; }
+  .brow .blab { font-size:.8rem; color:var(--ink2); font-weight:600; }
+  .track { height:16px; background:var(--track); border-radius:5px; overflow:hidden; position:relative; }
+  .fill { height:100%; border-radius:5px; min-width:3px; }
+  .fill.c{ background:var(--chroma);} .fill.q{ background:var(--qdrant);}
+  .brow .bval { font-size:.82rem; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .brow .bval .pm { color:var(--muted); font-weight:500; font-size:.9em; }
+  .legend { display:flex; gap:16px; margin-top:2px; }
+  .legend span { font-size:.78rem; color:var(--ink2); display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x:auto; border-radius:12px; border:1px solid var(--border); margin-top:14px; }
+  table { border-collapse:collapse; width:100%; font-size:.85rem; background:var(--surface); }
+  th,td { text-align:left; padding:9px 13px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  thead th { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700;
+    position:sticky; top:0; background:var(--surface); }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tbody tr:last-child td { border-bottom:none; }
+  .cwin { color:var(--chroma); font-weight:750; } .qwin { color:var(--qdrant); font-weight:750; }
+  .matrix td:first-child { color:var(--ink); font-weight:600; }
+
+  /* ---- answer comparison ---- */
+  .ans { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+  @media (max-width:760px){ .ans{ grid-template-columns:1fr; } }
+  .ans .col { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px; box-shadow:var(--shadow); }
+  .ans .col.c { border-top:3px solid var(--chroma); }
+  .ans .col.q { border-top:3px solid var(--qdrant); }
+  .ans .who { font-size:.74rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:var(--muted); margin-bottom:7px; }
+  .ans .txt { font-size:.86rem; color:var(--ink2); line-height:1.55; }
+  .simbar { display:flex; align-items:center; gap:12px; margin:14px 0 4px; }
+  .simbar .big { font-size:1.6rem; font-weight:800; letter-spacing:-0.02em; color:var(--good); }
+  .srcnote { font-size:.82rem; color:var(--muted); margin-top:6px; }
+
+  /* per-run svg */
+  .svgwrap { margin-top:14px; overflow-x:auto; }
+  svg text { font-family:system-ui,sans-serif; }
+
+  .foot { margin-top:72px; padding-top:22px; border-top:1px solid var(--border); font-size:.82rem; color:var(--muted); }
+  .pill { display:inline-block; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+    padding:2px 8px; border-radius:999px; }
+  .pill.c{ color:#fff; background:var(--chroma);} .pill.q{ color:#fff; background:var(--qdrant);}
+  .pill.tie{ color:#fff; background:var(--good);}
+  @media (prefers-reduced-motion: no-preference){ .fill{ transition:width .5s cubic-bezier(.4,0,.2,1);} }
+</style>
+
+<div class="wrap">
+
+  <!-- ============ MASTHEAD ============ -->
+  <header class="mast">
+    <div class="rule"></div>
+    <div class="eyebrow">Vector Database Evaluation · Legal EASE RAG</div>
+    <h1>ChromaDB <span class="vs">vs</span> Qdrant</h1>
+    <p class="sub">A five-run, evidence-backed benchmark of the two vector databases powering
+      Legal EASE's Indian-legal retrieval system — measuring indexing, query latency, retrieval
+      quality, resource usage, and end-to-end answer quality on an identical corpus.</p>
+    <div class="metabar">
+      <span class="chip"><b>9,063</b> vectors</span>
+      <span class="chip">InLegalBERT <b>768-d</b></span>
+      <span class="chip"><b>28</b> legal queries</span>
+      <span class="chip"><b>5</b> independent runs</span>
+      <span class="chip">cosine · HNSW</span>
+      <span class="chip">mean ± std reported</span>
+      <span class="chip"><b>+ Qdrant server mode</b></span>
+    </div>
+  </header>
+
+  <!-- ============ VERDICT TILES ============ -->
+  <div class="tiles">
+    <div class="tile win-chroma">
+      <div class="k">Query latency</div>
+      <div class="v">ChromaDB</div>
+      <div class="d">In-process ~1.4 ms. Qdrant server wins index &amp; delete (§7).</div>
+    </div>
+    <div class="tile win-qdrant">
+      <div class="k">Accuracy</div>
+      <div class="v">Qdrant</div>
+      <div class="d">recall@10 = 1.000 vs Chroma's 0.761 (default HNSW).</div>
+    </div>
+    <div class="tile win-tie">
+      <div class="k">Answer quality</div>
+      <div class="v">Effective tie</div>
+      <div class="d">0.98 answer similarity; same sources retrieved.</div>
+    </div>
+    <div class="tile win-split">
+      <div class="k">Footprint</div>
+      <div class="v">Split</div>
+      <div class="d">Qdrant −36% disk; Chroma −31% peak RAM.</div>
+    </div>
+  </div>
+
+  <!-- ============ BOTTOM LINE ============ -->
+  <section id="verdict" style="margin-top:40px;">
+    <div class="callout key">
+      <h3>The bottom line</h3>
+      <p style="margin-bottom:8px;"><strong>For Legal EASE as it runs today</strong> — a single node,
+      ~9k–100k vectors, embedded/serverless, latency-sensitive — <span class="pill c">ChromaDB</span>
+      is the pragmatic choice: sub-2 ms queries, 6× faster index builds, lower memory, and trivial
+      in-process persistence with no server to operate.</p>
+      <p style="margin:8px 0 0;"><strong>For an institutional / production platform</strong> —
+      millions of vectors, concurrent writers, high availability, best-in-class recall and
+      quantization — <span class="pill q">Qdrant</span> in <em>server</em> mode is built for it. We
+      measured that server too (§7): it <strong>indexes faster than Chroma and deletes ~4× quicker</strong>,
+      and cuts query latency 2–3× — though in-process Chroma keeps a single-query latency edge because
+      Qdrant pays a per-request network hop. Chroma's recall gap is <strong>tunable</strong> via HNSW.
+      Crucially, across the actual legal questions we tested, <strong>the two produced 98%-identical
+      grounded answers</strong> — so the choice is about latency, scale, and operations, not answer quality.</p>
+    </div>
+  </section>
+
+  <!-- ============ METHODOLOGY ============ -->
+  <section id="method">
+    <div class="eyebrow sec-eyebrow">01 — Methodology</div>
+    <h2>How we measured it</h2>
+    <p class="lead">The benchmark is designed so that <strong>only the vector database varies</strong>.
+      Everything upstream — corpus, embedding model, query set — is held constant, and each engine is
+      measured in isolation, five times.</p>
+    <div class="duo" style="grid-template-columns:1fr 1fr;">
+      <div class="card">
+        <h3 style="margin-top:0;">Controls</h3>
+        <ul style="margin:0; padding-left:18px; font-size:.92rem; color:var(--ink2); line-height:1.7;">
+          <li><strong>Identical vectors.</strong> The 9,063 InLegalBERT embeddings are computed once and
+            fed to both databases — no re-embedding, so embedding cost never confounds the result.</li>
+          <li><strong>Isolated subprocess.</strong> Each engine runs in its own process; the parent
+            polls RSS to capture a clean peak-memory figure per database.</li>
+          <li><strong>Exact ground truth.</strong> Recall is measured against a brute-force
+            NumPy cosine scan of all 9,063 vectors — the true top-k, not an approximation.</li>
+          <li><strong>Five runs.</strong> Every metric is repeated 5× and reported as mean ± std, so
+            variance is visible and the numbers are reproducible, not single-shot.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">Environment &amp; caveats</h3>
+        <ul style="margin:0; padding-left:18px; font-size:.92rem; color:var(--ink2); line-height:1.7;">
+          <li><strong>Hardware.</strong> Windows workstation, CPU-only, local SSD. No GPU; both engines
+            are on equal footing.</li>
+          <li><strong>Qdrant ran in local/embedded mode</strong> (the Python file-backed client), which
+            is a development convenience, <em>not</em> its performance configuration — the Rust server
+            is materially faster (see §6).</li>
+          <li><strong>Chroma's persistent client</strong> (hnswlib + SQLite) is its normal single-node
+            mode, so its numbers reflect a realistic deployment.</li>
+          <li><strong>Queries:</strong> 28 realistic Indian-contract-law questions; latency is 25 timed
+            repetitions per query per run, top-k = 10.</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:14px; font-size:.9rem;">Reproduce: <code>python scripts/index_knowledge_base.py --store both</code>
+      → <code>python scripts/benchmark_vector_dbs.py --runs 5</code>
+      → <code>python scripts/compare_answers.py</code>.</p>
+  </section>
+
+  <!-- ============ MEET THE DATABASES ============ -->
+  <section id="guide">
+    <div class="eyebrow sec-eyebrow">02 — Background</div>
+    <h2>Meet the two databases</h2>
+    <p class="lead">Both are open-source (Apache-2.0) vector stores, but they come from different design
+      philosophies — which is exactly why their benchmark profiles diverge.</p>
+    <div class="duo">
+      <div class="db">
+        <div class="badge"><span class="dot c"></span>ChromaDB</div>
+        <div class="tag">Python-first · embeddings database for LLM apps</div>
+        <p>An AI-native vector store built for developer velocity. Its <strong>persistent client</strong>
+          runs fully in-process (HNSW via <code>hnswlib</code>, metadata in SQLite), so there is no
+          server to stand up — you <code>pip install</code> and go. A client/server mode and Chroma
+          Cloud exist for scaling out.</p>
+        <ul>
+          <li class="pro">Trivial embedded persistence; minimal ops</li>
+          <li class="pro">Very low query latency &amp; memory in-process</li>
+          <li class="pro">Fast index builds</li>
+          <li class="con">Default HNSW favours speed over recall (tunable)</li>
+          <li class="con">Single-node focus; clustering/HA less mature</li>
+        </ul>
+      </div>
+      <div class="db">
+        <div class="badge"><span class="dot q"></span>Qdrant</div>
+        <div class="tag">Rust engine · purpose-built vector search</div>
+        <p>A dedicated vector search engine written in Rust, built for production scale. Its
+          <strong>server</strong> offers gRPC/REST, typed payload filters with payload indexes,
+          vector <strong>quantization</strong> (scalar/product/binary), memory-mapped &amp; on-disk
+          vectors, and sharding / replication / HA. A local embedded Python mode exists for
+          development (what we benchmarked here).</p>
+        <ul>
+          <li class="pro">Excellent recall out of the box</li>
+          <li class="pro">Horizontal scale, HA, quantization, rich filtering</li>
+          <li class="pro">Smaller on-disk footprint</li>
+          <li class="con">Heavier to operate (run a server)</li>
+          <li class="con">Local/embedded mode is dev-only &amp; slower</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ INDEXING ============ -->
+  <section id="indexing">
+    <div class="eyebrow sec-eyebrow">03 — Indexing</div>
+    <h2>Indexing performance</h2>
+    <p class="lead">Time to build the full 9,063-vector index from scratch (embeddings supplied). Chroma
+      is the clear winner here — roughly <strong>6× faster</strong>, at ~977 vs ~165 vectors/second.</p>
+    <div class="chart">
+      <div class="ctitle">Index build time <span class="cnote">seconds · lower is better · mean ± std over 5 runs</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:16.9%"></div></div><span class="bval">9.28<span class="pm"> ±0.19</span> s</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">54.9<span class="pm"> ±1.7</span> s</span></div>
+      </div>
+      <div class="metric">
+        <div class="mname">Throughput — vectors indexed per second (higher is better)</div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:100%"></div></div><span class="bval">977 <span class="pm">vec/s</span></span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:16.9%"></div></div><span class="bval">165 <span class="pm">vec/s</span></span></div>
+      </div>
+    </div>
+    <p>Chroma's in-process hnswlib build is highly optimised for single-node ingestion. Qdrant's local
+      mode carries per-operation overhead that its server avoids; even so, ~1 minute to index 9k
+      vectors is perfectly acceptable for a knowledge base that is rebuilt rarely.</p>
+  </section>
+
+  <!-- ============ QUERY LATENCY ============ -->
+  <section id="latency">
+    <div class="eyebrow sec-eyebrow">04 — Query latency</div>
+    <h2>Query performance</h2>
+    <p class="lead">Single-query latency, 25 timed reps × 28 queries × 5 runs. In local mode Chroma is
+      <strong>~23× faster</strong> — but read this alongside the Qdrant local-mode note in §6.</p>
+
+    <div class="chart">
+      <div class="ctitle">Unfiltered query latency <span class="cnote">milliseconds · lower is better</span></div>
+      <div class="metric">
+        <div class="mname">Median (p50)</div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:3.4%"></div></div><span class="bval">1.39 ms</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:80.4%"></div></div><span class="bval">32.3 ms</span></div>
+      </div>
+      <div class="metric">
+        <div class="mname">95th percentile (p95)</div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:4.3%"></div></div><span class="bval">1.72 ms</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:90.5%"></div></div><span class="bval">36.3 ms</span></div>
+      </div>
+      <div class="metric">
+        <div class="mname">99th percentile (p99)</div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:5%"></div></div><span class="bval">1.99 ms</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">40.1 ms</span></div>
+      </div>
+      <div class="cnote" style="margin-top:12px;">Chroma bars are slivers because it is ~20–23× faster — the visual gap <em>is</em> the finding. Throughput: <strong>710 q/s</strong> (Chroma) vs <strong>31 q/s</strong> (Qdrant local).</div>
+    </div>
+
+    <div class="chart">
+      <div class="ctitle">Metadata-filtered latency <span class="cnote">where doc_type = statute · milliseconds</span></div>
+      <div class="metric">
+        <div class="mname">Mean</div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:12.7%"></div></div><span class="bval">11.9<span class="pm"> ±0.3</span> ms</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">93.3<span class="pm"> ±2.5</span> ms</span></div>
+      </div>
+      <div class="metric">
+        <div class="mname">95th percentile</div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:13.2%"></div></div><span class="bval">13.1 ms</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">99.6 ms</span></div>
+      </div>
+    </div>
+    <p>Both engines slow down under metadata filtering (they must reconcile the filter with the vector
+      search), and the relative gap holds. Note Qdrant's server builds <em>payload indexes</em> that
+      accelerate exactly this case — another reason the local numbers understate it.</p>
+  </section>
+
+  <!-- ============ RECALL ============ -->
+  <section id="recall">
+    <div class="eyebrow sec-eyebrow">05 — Retrieval quality</div>
+    <h2>Recall — do we get the <em>right</em> results?</h2>
+    <p class="lead">Recall@10 measures how many of the true top-10 nearest vectors (by exact cosine) each
+      engine's approximate search actually returns. This is where they genuinely diverge:
+      <strong>Qdrant is perfect; Chroma's default HNSW misses ~24%.</strong></p>
+    <div class="chart">
+      <div class="ctitle">recall@10 vs exact brute-force <span class="cnote">1.0 = returns the true top-10 every time · mean ± std</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:76.1%"></div></div><span class="bval">0.761<span class="pm"> ±0.017</span></span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">1.000<span class="pm"> ±0.000</span></span></div>
+      </div>
+    </div>
+    <div class="callout warnc">
+      <h3>Why the gap — and why it's tunable</h3>
+      <p style="margin:0;">Chroma's default HNSW search breadth (<code>ef</code>) is tuned for speed, so
+        it explores fewer candidates and misses some true neighbours. Qdrant's defaults favour accuracy.
+        This is a <strong>configuration difference, not a capability ceiling</strong> — raising Chroma's
+        <code>ef_search</code> / construction parameters trades some of its large speed surplus for
+        recall. The 0.761 is the out-of-the-box number an unaware team would ship.</p>
+    </div>
+
+    <h3>Stability across the 5 runs</h3>
+    <p>Qdrant returns exactly the true top-10 on every run (recall = 1.000, std = 0). Chroma's recall
+      wobbles between runs (0.732–0.782) because HNSW graph construction is randomised — visible below.</p>
+    <div class="chart">
+      <div class="svgwrap">
+        <svg viewBox="0 0 660 240" width="100%" height="240" role="img"
+             aria-label="Recall per run: Qdrant flat at 1.0, Chroma scattered around 0.76">
+          <!-- gridlines + y labels: 0.70,0.80,0.90,1.00 -> y 190,140,90,40 (val v -> 190-(v-0.70)/0.30*150) -->
+          <g stroke="var(--grid)" stroke-width="1">
+            <line x1="70" y1="40" x2="640" y2="40"></line>
+            <line x1="70" y1="90" x2="640" y2="90"></line>
+            <line x1="70" y1="140" x2="640" y2="140"></line>
+            <line x1="70" y1="190" x2="640" y2="190"></line>
+          </g>
+          <g fill="var(--muted)" font-size="12" text-anchor="end">
+            <text x="60" y="44">1.00</text><text x="60" y="94">0.90</text>
+            <text x="60" y="144">0.80</text><text x="60" y="194">0.70</text>
+          </g>
+          <g fill="var(--muted)" font-size="12" text-anchor="middle">
+            <text x="95" y="214">Run 1</text><text x="230" y="214">Run 2</text>
+            <text x="365" y="214">Run 3</text><text x="500" y="214">Run 4</text><text x="635" y="214">Run 5</text>
+          </g>
+          <!-- Qdrant line at 1.0 (y=40) -->
+          <polyline fill="none" stroke="var(--qdrant)" stroke-width="2.5"
+            points="95,40 230,40 365,40 500,40 635,40"></polyline>
+          <g fill="var(--qdrant)">
+            <circle cx="95" cy="40" r="4.5"></circle><circle cx="230" cy="40" r="4.5"></circle>
+            <circle cx="365" cy="40" r="4.5"></circle><circle cx="500" cy="40" r="4.5"></circle>
+            <circle cx="635" cy="40" r="4.5"></circle>
+          </g>
+          <!-- Chroma: v 0.732,0.768,0.782,0.757,0.768 -> y 174,156,149,161.5,156 -->
+          <polyline fill="none" stroke="var(--chroma)" stroke-width="2.5"
+            points="95,174 230,156 365,149 500,161.5 635,156"></polyline>
+          <g fill="var(--chroma)">
+            <circle cx="95" cy="174" r="4.5"></circle><circle cx="230" cy="156" r="4.5"></circle>
+            <circle cx="365" cy="149" r="4.5"></circle><circle cx="500" cy="161.5" r="4.5"></circle>
+            <circle cx="635" cy="156" r="4.5"></circle>
+          </g>
+          <text x="640" y="34" fill="var(--qdrant)" font-size="12" font-weight="700" text-anchor="end">Qdrant 1.000</text>
+          <text x="95" y="192" fill="var(--chroma)" font-size="12" font-weight="700" text-anchor="middle" dy="0">Chroma ≈0.76</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ AGREEMENT + ANSWER QUALITY ============ -->
+  <section id="answers">
+    <div class="eyebrow sec-eyebrow">06 — Answer quality</div>
+    <h2>Same question, same answer? — the finding that matters</h2>
+    <p class="lead">Speed and recall are means to an end; what an institution actually ships is the
+      <em>answer</em>. So we ran the full RAG pipeline (retrieve → Gemini) on identical questions
+      through each backend and compared the generated answers.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Cross-DB retrieval agreement</th><th class="num">Value</th><th>Reading</th></tr></thead>
+        <tbody>
+          <tr><td>top-10 overlap</td><td class="num tnum">0.761 ± 0.017</td><td>tracks Chroma's recall — the tail differs</td></tr>
+          <tr><td>top-1 agreement</td><td class="num tnum">0.679</td><td>same #1 result on ~68% of queries</td></tr>
+          <tr><td>score MAE (shared hits)</td><td class="num tnum">1.8 × 10⁻⁷</td><td>identical scoring — same vectors, same cosine</td></tr>
+          <tr><td>end-to-end answer similarity</td><td class="num tnum" style="color:var(--good);font-weight:750;">0.981</td><td>the generated answers are effectively the same</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="simbar">
+      <span class="big">0.981</span>
+      <span style="font-size:.92rem; color:var(--ink2);">mean answer similarity across the tested rent-deed questions
+        (0.979, 0.986, 0.979) — <strong style="color:var(--ink);">1.0 = effectively identical</strong>.</span>
+    </div>
+    <p>Why so high despite a 0.76 overlap? Because the <strong>decisive, high-signal chunks</strong>
+      (the relevant statute, the "liquidated damages" definition, the matching red-flags) are retrieved
+      by <em>both</em> stores. The recall gap lives in the low-ranked tail that the LLM barely uses. For
+      the questions below, the two backends retrieved the <strong>identical top-9 sources with identical
+      scores</strong> — so the answers differ only in Gemini's phrasing.</p>
+
+    <h3>Example — “Is the non-refundable security deposit enforceable in India?”</h3>
+    <div class="ans">
+      <div class="col c">
+        <div class="who"><span class="pill c">ChromaDB</span> · confidence: high</div>
+        <div class="txt">“No … the clause stating the security deposit is ‘NON-REFUNDABLE … forfeited to
+          the Lessor in all circumstances’ is unlikely to be fully enforceable. In India, courts treat
+          such clauses, if essentially a penalty, under the principles of liquidated damages … will only
+          award reasonable compensation … This is grounded in <strong>Section 74 of the Indian Contract
+          Act, 1872</strong>.”</div>
+      </div>
+      <div class="col q">
+        <div class="who"><span class="pill q">Qdrant</span> · confidence: high</div>
+        <div class="txt">“While the Rental Deed states … the deposit is ‘NON-REFUNDABLE and shall stand
+          forfeited … including normal expiry,’ its enforceability is subject to scrutiny. As per the
+          definition of Liquidated damages (referencing <strong>Section 74, Indian Contract Act,
+          1872</strong>), courts award only reasonable compensation … and will not enforce the sum if it
+          is determined to be a penalty.”</div>
+      </div>
+    </div>
+    <div class="srcnote">Both answers grounded on the same retrieved set: Indian Contract Act §58 &amp; §36,
+      the “Liquidated damages” glossary entry (§74), red-flag references, and two Supreme Court judgments —
+      <strong>identical sources, identical retrieval scores.</strong> Similarity: 0.979.</div>
+  </section>
+
+  <!-- ============ QDRANT LOCAL vs SERVER ============ -->
+  <section id="localmode">
+    <div class="eyebrow sec-eyebrow">07 — Local vs Server</div>
+    <h2>We ran the Qdrant server — and the story flips</h2>
+    <p class="lead">Everything above measured Qdrant in <strong>local / embedded mode</strong> (a pure-Python,
+      file-backed client). That is <em>not</em> Qdrant's performance path. So we stood up the real
+      <strong>Rust server</strong> (Docker, v1.18.3) and re-ran all five iterations against it over gRPC.
+      The result reverses two headline verdicts.</p>
+
+    <div class="callout key">
+      <h3>What server mode changed</h3>
+      <p style="margin:0;">Qdrant server <strong>indexes 9× faster than its local mode — and now beats
+        Chroma</strong> (6.2 s vs 9.3 s). It <strong>deletes 8× faster than local and ~4× faster than
+        Chroma</strong> (37 ms vs 164 ms). Query latency dropped 2–3× (filtered latency fell from 93 ms
+        to 27 ms). Recall stayed perfect (1.000). The one thing server mode does <em>not</em> win is
+        single-query latency — and that gap is <strong>transport, not search</strong> (see below).</p>
+    </div>
+
+    <h3>Three-way comparison (5-run mean)</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>Metric</th><th class="num">Chroma (in-process)</th>
+          <th class="num">Qdrant local</th><th class="num">Qdrant server</th><th>Best</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>Index build (s)</td><td class="num tnum">9.3</td><td class="num tnum">54.9</td><td class="num tnum">6.2</td><td><span class="pill q">Qdrant srv</span></td></tr>
+          <tr><td>Throughput (vec/s)</td><td class="num tnum">980</td><td class="num tnum">165</td><td class="num tnum">1476</td><td><span class="pill q">Qdrant srv</span></td></tr>
+          <tr><td>Query mean (ms)</td><td class="num tnum">1.42</td><td class="num tnum">32.2</td><td class="num tnum">14.7</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Query p95 (ms)</td><td class="num tnum">1.78</td><td class="num tnum">36.3</td><td class="num tnum">26.5</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Filtered mean (ms)</td><td class="num tnum">11.7</td><td class="num tnum">93.3</td><td class="num tnum">27.0</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>recall@10</td><td class="num tnum">0.77</td><td class="num tnum">1.000</td><td class="num tnum">1.000</td><td><span class="pill q">Qdrant</span></td></tr>
+          <tr><td>Delete (ms)</td><td class="num tnum">164</td><td class="num tnum">290</td><td class="num tnum">37</td><td><span class="pill q">Qdrant srv</span></td></tr>
+          <tr><td>Disk (MB)</td><td class="num tnum">131</td><td class="num tnum">84</td><td class="num tnum">85</td><td><span class="pill q">Qdrant</span></td></tr>
+          <tr><td>Peak memory (MB)</td><td class="num tnum">229</td><td class="num tnum">328</td><td class="num tnum">~450<span class="pm" style="color:var(--muted)"> (idle 85)</span></td><td><span class="pill c">Chroma</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="chart">
+      <div class="ctitle">Index build time — three-way <span class="cnote">seconds · lower is better · server flips the result</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Qdrant&nbsp;srv</span><div class="track"><div class="fill q" style="width:11.3%"></div></div><span class="bval">6.2 s</span></div>
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:16.9%"></div></div><span class="bval">9.3 s</span></div>
+        <div class="brow"><span class="blab">Qdrant&nbsp;local</span><div class="track"><div class="fill q" style="width:100%;opacity:.4"></div></div><span class="bval">54.9 s</span></div>
+      </div>
+    </div>
+    <div class="chart">
+      <div class="ctitle">Query latency (mean) — three-way <span class="cnote">milliseconds · lower is better</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:4.4%"></div></div><span class="bval">1.42 ms</span></div>
+        <div class="brow"><span class="blab">Qdrant&nbsp;srv</span><div class="track"><div class="fill q" style="width:45.7%"></div></div><span class="bval">14.7 ms</span></div>
+        <div class="brow"><span class="blab">Qdrant&nbsp;local</span><div class="track"><div class="fill q" style="width:100%;opacity:.4"></div></div><span class="bval">32.2 ms</span></div>
+      </div>
+    </div>
+
+    <h3>Why Chroma still wins single-query latency — and why that's expected</h3>
+    <p>ChromaDB runs <strong>in the same process</strong> as the application: a query is a function call
+      with zero network cost. Qdrant, even on localhost, is a <strong>separate server</strong> — every
+      query pays a gRPC round-trip and (de)serialization. That per-request transport (~10–15 ms here) is
+      the residual gap, not slower vector search. It's the classic <strong>embedded vs client-server</strong>
+      trade-off: in-process wins a single synchronous query; a server wins on concurrency, horizontal
+      scale, isolation, and shared access by many clients — which is exactly what production platforms
+      need. Under concurrent load or batched queries, the server's throughput advantage reasserts itself.</p>
+    <p style="font-size:.86rem; color:var(--muted);">Measured on the same machine: Qdrant server disk
+      85 MB (matching local), container memory ~450 MB peak during bulk load and 85 MB idle. The harness
+      reports a smaller RSS for the Qdrant runs because the vector engine now lives in the container, not
+      the Python client.</p>
+  </section>
+
+  <!-- ============ RESOURCES ============ -->
+  <section id="resources">
+    <div class="eyebrow sec-eyebrow">08 — Resource usage</div>
+    <h2>Disk &amp; memory footprint</h2>
+    <p class="lead">The footprint story splits: <strong>Qdrant stores the same index in ~36% less disk</strong>,
+      while <strong>Chroma runs in ~31% less memory</strong>.</p>
+    <div class="chart">
+      <div class="ctitle">On-disk index size <span class="cnote">megabytes · lower is better</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:100%"></div></div><span class="bval">130.7 MB</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:64.3%"></div></div><span class="bval">84.0 MB</span></div>
+      </div>
+    </div>
+    <div class="chart">
+      <div class="ctitle">Peak process memory (RSS) <span class="cnote">megabytes · lower is better · isolated subprocess</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:69.5%"></div></div><span class="bval">228 MB</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">328 MB</span></div>
+      </div>
+    </div>
+    <p>Qdrant's compact on-disk format (and its optional quantization, unused here) is a real advantage at
+      scale, where storage dominates cost. The higher local-mode memory partly reflects the Python
+      layer; the server manages memory very differently (mmap, on-disk vectors, quantization).</p>
+  </section>
+
+  <!-- ============ DELETE ============ -->
+  <section id="delete">
+    <div class="eyebrow sec-eyebrow">09 — Mutation</div>
+    <h2>Delete performance</h2>
+    <p class="lead">Legal EASE evicts a document's chunks when it expires, so filtered-delete cost matters.
+      Both are sub-300 ms to delete a 47-vector metadata-filtered subset; Chroma is ~1.8× quicker.</p>
+    <div class="chart">
+      <div class="ctitle">Filtered delete time <span class="cnote">milliseconds · lower is better · mean ± std</span></div>
+      <div class="metric">
+        <div class="brow"><span class="blab">Chroma</span><div class="track"><div class="fill c" style="width:54.6%"></div></div><span class="bval">158<span class="pm"> ±4</span> ms</span></div>
+        <div class="brow"><span class="blab">Qdrant</span><div class="track"><div class="fill q" style="width:100%"></div></div><span class="bval">290<span class="pm"> ±5</span> ms</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ OPERATIONAL MATRIX ============ -->
+  <section id="ops">
+    <div class="eyebrow sec-eyebrow">10 — Architecture</div>
+    <h2>Operational &amp; architectural comparison</h2>
+    <p class="lead">Numbers aside, an institutional choice is also about how each system is run, scaled,
+      and maintained.</p>
+    <div class="scroll">
+      <table class="matrix">
+        <thead><tr><th>Dimension</th><th>ChromaDB</th><th>Qdrant</th></tr></thead>
+        <tbody>
+          <tr><td>Core language</td><td>Python (+ hnswlib)</td><td>Rust</td></tr>
+          <tr><td>Embedded / local mode</td><td>Yes — production-grade single node</td><td>Yes — dev convenience only</td></tr>
+          <tr><td>Server / distributed</td><td>Server exists; clustering newer</td><td>First-class: sharding, replication, HA</td></tr>
+          <tr><td>Concurrency (one store)</td><td>Multiple in-process readers</td><td>Local locks the folder; server for concurrency</td></tr>
+          <tr><td>Metadata filtering</td><td><code>where</code> dict</td><td>Typed filters + payload indexes</td></tr>
+          <tr><td>Quantization / mem tuning</td><td>Limited</td><td>Scalar / product / binary, mmap, on-disk</td></tr>
+          <tr><td>Default recall (this study)</td><td class="qwin">0.761 (tunable up)</td><td class="qwin">1.000</td></tr>
+          <tr><td>Local query speed (this study)</td><td class="cwin">~1.4 ms</td><td>~32 ms (server much faster)</td></tr>
+          <tr><td>Managed cloud</td><td>Chroma Cloud (newer)</td><td>Qdrant Cloud (mature)</td></tr>
+          <tr><td>Best-fit workload</td><td class="cwin">Prototyping → mid single-node</td><td class="qwin">Large-scale production</td></tr>
+          <tr><td>License</td><td>Apache-2.0</td><td>Apache-2.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ DECISION FRAMEWORK ============ -->
+  <section id="decision">
+    <div class="eyebrow sec-eyebrow">11 — Decision</div>
+    <h2>Which should you choose?</h2>
+    <div class="duo">
+      <div class="db" style="border-top:3px solid var(--chroma);">
+        <div class="badge"><span class="dot c"></span>Choose ChromaDB when…</div>
+        <ul>
+          <li class="pro">You're single-node, ≤ ~100k–1M vectors</li>
+          <li class="pro">Latency is critical and you want zero server ops</li>
+          <li class="pro">You're prototyping or shipping an MVP fast</li>
+          <li class="pro">Memory is tighter than disk</li>
+          <li class="con">…and you'll tune HNSW <code>ef</code> if recall matters</li>
+        </ul>
+      </div>
+      <div class="db" style="border-top:3px solid var(--qdrant);">
+        <div class="badge"><span class="dot q"></span>Choose Qdrant when…</div>
+        <ul>
+          <li class="pro">You need millions of vectors, HA, horizontal scale</li>
+          <li class="pro">Out-of-the-box recall accuracy is non-negotiable</li>
+          <li class="pro">You want quantization &amp; disk-efficient storage</li>
+          <li class="pro">Rich, indexed metadata filtering at scale</li>
+          <li class="con">…and you'll run the server, not local mode</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout key" style="margin-top:20px;">
+      <h3>Recommendation for Legal EASE</h3>
+      <p style="margin:0;">Stay on <span class="pill c">ChromaDB</span> for the current product — it's
+        faster, lighter, and the answer quality is indistinguishable from Qdrant's on real legal
+        questions (0.98 similarity). Keep the pluggable <code>VectorStore</code> abstraction and the
+        Qdrant backend in place: when the corpus grows past a single node or recall SLAs tighten,
+        flip <code>VECTOR_DB=qdrant</code> against a <strong>Qdrant server</strong> — no application
+        rewrite required. Before that switch, close Chroma's recall gap by raising its HNSW search
+        breadth and re-running this benchmark.</p>
+    </div>
+  </section>
+
+  <!-- ============ APPENDIX ============ -->
+  <section id="appendix">
+    <div class="eyebrow sec-eyebrow">12 — Appendix</div>
+    <h2>Full data</h2>
+    <h3>Aggregate — mean ± std over 5 runs <span style="font-weight:400;color:var(--muted);font-size:.85rem;">(Qdrant = local mode; server-mode figures in §7)</span></h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Metric</th><th class="num">ChromaDB</th><th class="num">Qdrant</th><th>Winner</th></tr></thead>
+        <tbody>
+          <tr><td>Index build (s)</td><td class="num tnum">9.28 ± 0.19</td><td class="num tnum">54.89 ± 1.73</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Throughput (vec/s)</td><td class="num tnum">977 ± 20</td><td class="num tnum">165 ± 5</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Query mean (ms, unfilt.)</td><td class="num tnum">1.41 ± 0.09</td><td class="num tnum">32.19 ± 2.22</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Query p95 (ms)</td><td class="num tnum">1.72 ± 0.18</td><td class="num tnum">36.30 ± 1.63</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Query p99 (ms)</td><td class="num tnum">1.99 ± 0.38</td><td class="num tnum">40.12 ± 3.09</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Filtered mean (ms)</td><td class="num tnum">11.87 ± 0.29</td><td class="num tnum">93.26 ± 2.54</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>recall@10</td><td class="num tnum">0.761 ± 0.017</td><td class="num tnum">1.000 ± 0.000</td><td><span class="pill q">Qdrant</span></td></tr>
+          <tr><td>Disk (MB)</td><td class="num tnum">130.7</td><td class="num tnum">84.0</td><td><span class="pill q">Qdrant</span></td></tr>
+          <tr><td>Peak RSS (MB)</td><td class="num tnum">228.2</td><td class="num tnum">328.4</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Delete (ms)</td><td class="num tnum">158.3 ± 3.9</td><td class="num tnum">289.7 ± 4.8</td><td><span class="pill c">Chroma</span></td></tr>
+          <tr><td>Answer similarity</td><td class="num tnum" colspan="2" style="text-align:center;">0.981 (both) — <span class="pill tie">tie</span></td><td><span class="pill tie">Tie</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Per-run detail (5 runs)</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>Run</th>
+          <th class="num">C index s</th><th class="num">C p95 ms</th><th class="num">C recall</th>
+          <th class="num">Q index s</th><th class="num">Q p95 ms</th><th class="num">Q recall</th>
+          <th class="num">top-1 agree</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="num tnum">9.6</td><td class="num tnum">2.07</td><td class="num tnum">0.732</td><td class="num tnum">56.2</td><td class="num tnum">34.79</td><td class="num tnum">1.000</td><td class="num tnum">0.643</td></tr>
+          <tr><td>2</td><td class="num tnum">9.3</td><td class="num tnum">1.66</td><td class="num tnum">0.768</td><td class="num tnum">53.8</td><td class="num tnum">35.50</td><td class="num tnum">1.000</td><td class="num tnum">0.643</td></tr>
+          <tr><td>3</td><td class="num tnum">9.1</td><td class="num tnum">1.61</td><td class="num tnum">0.782</td><td class="num tnum">52.7</td><td class="num tnum">35.17</td><td class="num tnum">1.000</td><td class="num tnum">0.679</td></tr>
+          <tr><td>4</td><td class="num tnum">9.1</td><td class="num tnum">1.62</td><td class="num tnum">0.757</td><td class="num tnum">57.6</td><td class="num tnum">36.77</td><td class="num tnum">1.000</td><td class="num tnum">0.750</td></tr>
+          <tr><td>5</td><td class="num tnum">9.3</td><td class="num tnum">1.63</td><td class="num tnum">0.768</td><td class="num tnum">54.2</td><td class="num tnum">39.28</td><td class="num tnum">1.000</td><td class="num tnum">0.679</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:.86rem; margin-top:14px;"><strong>Limits of this study.</strong> Single machine,
+      CPU-only, 9,063 vectors — findings may not extrapolate to billion-scale or GPU-served deployments.
+      Qdrant local mode is not its performance path (§7). Recall is corpus- and parameter-specific;
+      Chroma's is tunable. Answer-similarity used 3 rent-deed questions on <code>gemini-2.5-flash</code>
+      (the free tier's 5-requests/min limit caps larger batches).</p>
+  </section>
+
+  <div class="foot">
+    <p>Legal EASE — AI-powered Indian legal document analysis. Data generated by
+      <code>scripts/benchmark_vector_dbs.py --runs 5</code> and <code>scripts/compare_answers.py</code>;
+      full machine-readable results in <code>docs/benchmark_data.json</code>. Embeddings:
+      law-ai/InLegalBERT (768-d, cosine). Both databases Apache-2.0.</p>
+  </div>
+
+</div>
+
+</body></html>

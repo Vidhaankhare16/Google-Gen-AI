@@ -1,0 +1,38 @@
+EMPLOYMENT AGREEMENT
+
+This Employment Agreement is made on 15th May 2025 between TechNova Solutions Pvt. Ltd., a company
+incorporated under the Companies Act, 2013, having its office at Hyderabad ("Company") and
+Mr. Arjun Mehta, residing at Chennai ("Employee").
+
+1. POSITION: The Employee is appointed as Senior Software Engineer reporting to the CTO.
+
+2. COMPENSATION: The Employee shall be paid a gross salary of Rs. 18,00,000 per annum, subject to
+   statutory deductions. The Company may revise or reduce the compensation at its sole discretion.
+
+3. PROBATION: The Employee shall be on probation for 12 months, extendable indefinitely at the
+   Company's discretion, during which employment may be terminated without notice or reason.
+
+4. NOTICE PERIOD: The Employee must serve a notice period of 6 months to resign. The Company may
+   terminate the Employee's services at any time with 3 days notice or pay in lieu thereof.
+
+5. NON-COMPETE: For a period of 3 years after leaving the Company, the Employee shall not, anywhere
+   in India, be employed by, consult for, or be associated with any business that competes with the
+   Company or operates in the information technology sector.
+
+6. NON-SOLICITATION: For 2 years after separation, the Employee shall not solicit any client or
+   employee of the Company.
+
+7. INTELLECTUAL PROPERTY: All intellectual property created by the Employee during and for 12
+   months after employment, whether or not related to the Company's business and whether created
+   during working hours or personal time, shall belong exclusively to the Company.
+
+8. CONFIDENTIALITY: The Employee shall keep all Company information confidential in perpetuity.
+
+9. GARDEN LEAVE & CLAWBACK: Upon resignation the Company may place the Employee on garden leave
+   without pay. Any joining bonus shall be clawed back in full if the Employee leaves within 3 years.
+
+10. GOVERNING LAW: This Agreement is governed by Indian law. Any dispute shall be subject to the
+    exclusive jurisdiction of the courts at Hyderabad, and the Employee waives any objection to
+    such jurisdiction or forum.
+
+Signed for TechNova Solutions Pvt. Ltd.        Employee: Arjun Mehta

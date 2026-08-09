@@ -1,4 +1,5 @@
 import io
+import os
 import base64
 import logging
 import requests
@@ -8,6 +9,7 @@ import pdfplumber
 from werkzeug.datastructures import FileStorage
 
 from config import Config
+from services import genai_backend
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ class PDFProcessor:
                 return True, text, None
             
             # Fallback: use Gemini Vision OCR for scanned/image-based PDFs
-            if Config.GEMINI_API_KEY:
+            if genai_backend.is_vertex() or Config.GEMINI_API_KEY:
                 file.seek(0)
                 success, text, error = self._extract_with_gemini_vision(file)
                 if success and len(text.strip()) >= self.min_text_length:
@@ -166,7 +168,8 @@ class PDFProcessor:
         try:
             import fitz  # PyMuPDF
 
-            api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+            # Same backend selection as the analyzer (Vertex AI or the AI Studio API).
+            model = os.getenv('GEMINI_VISION_MODEL') or os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
             file_bytes = io.BytesIO(file.read())
             doc = fitz.open(stream=file_bytes, filetype="pdf")
 
@@ -182,6 +185,7 @@ class PDFProcessor:
 
                     payload = {
                         "contents": [{
+                            "role": "user",   # required by Vertex AI, ignored by AI Studio
                             "parts": [
                                 {"text": "Extract all text from this document page. Return only the extracted text, preserving the original layout."},
                                 {"inline_data": {"mime_type": "image/png", "data": img_base64}}
@@ -189,12 +193,8 @@ class PDFProcessor:
                         }]
                     }
 
-                    response = requests.post(
-                        f"{api_url}?key={Config.GEMINI_API_KEY}",
-                        headers={"Content-Type": "application/json"},
-                        json=payload,
-                        timeout=60
-                    )
+                    api_url, headers = genai_backend.request_args(model)
+                    response = requests.post(api_url, headers=headers, json=payload, timeout=60)
 
                     if response.status_code == 200:
                         result = response.json()

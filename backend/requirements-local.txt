@@ -1,0 +1,27 @@
+# Local development dependencies (Windows / Python 3.13)
+#
+# This is a trimmed version of requirements.txt for running the app locally.
+# Differences from requirements.txt (which is used for Cloud Run/Docker deploy):
+#   - Drops gunicorn            -> Linux production WSGI server, not used locally.
+#   - Drops google-cloud-aiplatform & google-generativeai -> not imported anywhere;
+#     the analyzer calls Gemini over plain REST (requests).
+#   - Drops psutil              -> not imported anywhere in the code.
+#   - Relaxes pymupdf           -> newer version so prebuilt wheels exist for Python 3.13.
+#   - python-magic is optional  -> code degrades gracefully if libmagic is absent on Windows.
+
+Flask==3.0.0
+Flask-CORS==4.0.0
+Werkzeug==3.0.1
+
+# PDF processing
+PyPDF2==3.0.1
+pdfplumber==0.10.3
+pymupdf>=1.24.10
+
+# Gemini REST + env
+requests==2.31.0
+python-dotenv==1.0.0
+
+# WhatsApp (optional feature; safe to keep installed)
+twilio==8.10.0
+phonenumbers==8.13.25

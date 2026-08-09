@@ -1,0 +1,6 @@
+# Raw downloaded/large source files are not committed (re-acquire via build_knowledge_base.py).
+raw/
+# Processed JSONL can be large; keep it out of git by default. Remove this line to commit the corpus.
+processed/
+# Built vector indexes (Chroma/Qdrant) — regenerate with scripts/index_knowledge_base.py
+vector_store/

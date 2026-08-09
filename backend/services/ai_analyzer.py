@@ -7,8 +7,14 @@ import requests
 import json
 
 from config import Config
+from services import rag_service, genai_backend
 
 logger = logging.getLogger(__name__)
+
+# With RAG grounding + Gemini's large context window we no longer truncate to 8000 chars.
+# Analysis still caps very long documents generously; Q&A uses retrieved chunks instead.
+ANALYSIS_DOC_CHARS = int(os.getenv("ANALYSIS_DOC_CHARS", "40000"))
+QA_FALLBACK_DOC_CHARS = int(os.getenv("QA_FALLBACK_DOC_CHARS", "12000"))
 
 class AIAnalyzer:
     """
@@ -29,39 +35,50 @@ class AIAnalyzer:
         self.qa_prompt = self._get_qa_prompt()
     
     def _init_ai_clients(self):
-        """Initialize Google Cloud AI clients"""
+        """
+        Pick the Gemini backend (Vertex AI or the AI Studio API) and record the model.
+
+        The URL is resolved per call rather than cached here: on Vertex the request also
+        needs a bearer token that expires, so `genai_backend` builds both together.
+        """
         try:
-            if self.gemini_api_key:
-                # Use direct REST API calls to Gemini 2.0 Flash
-                self.api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
-                self.use_gemini_api = True
-                logger.info("✅ Initialized Gemini 2.0 Flash API client - Real AI analysis enabled!")
+            self.model = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+            self.use_gemini_api = genai_backend.is_vertex() or bool(self.gemini_api_key)
+            if self.use_gemini_api:
+                logger.info(f"✅ Gemini ready — model {self.model} via {genai_backend.describe()}")
             else:
-                self.use_gemini_api = False
-                logger.info("No API key provided, using mock responses")
-                
+                logger.info("No Gemini backend configured, using mock responses")
+
         except Exception as e:
             logger.error(f"Failed to initialize AI clients: {str(e)}")
             self.use_gemini_api = False
             logger.info("Falling back to mock responses")
     
-    def analyze_document(self, text: str, filename: str = None) -> Dict:
+    def analyze_document(self, text: str, filename: str = None, document_id: str = None) -> Dict:
         """
-        Analyze legal document and extract key information
-        
+        Analyze legal document and extract key information, grounded in the Indian legal KB.
+
         Args:
             text: Document text content
             filename: Original filename (optional)
-        
+            document_id: Storage id (unused for analysis grounding; kept for symmetry)
+
         Returns:
-            Dictionary with analysis results
+            Dictionary with analysis results (plus a 'sources' list of legal citations)
         """
-        
+
         try:
-            # Prepare the prompt with document text
+            # Retrieve relevant Indian law (red-flags, statutes, precedents) to ground the
+            # analysis, probing across the whole document rather than just its preamble.
+            grounding = rag_service.retrieve_for_document(text)
+            legal_context = grounding.format_context() if grounding else ""
+            sources = grounding.citations() if grounding else []
+
+            # Prepare the prompt with the (untruncated-ish) document text + retrieved legal context.
             prompt = self.analysis_prompt.format(
-                document_text=text[:8000],  # Limit text length for API
-                filename=filename or "document"
+                document_text=text[:ANALYSIS_DOC_CHARS],
+                filename=filename or "document",
+                legal_context=legal_context or "(no external legal context retrieved)",
             )
             
             # Generate analysis
@@ -91,36 +108,58 @@ class AIAnalyzer:
             
             # Parse the structured response
             analysis_result = self._parse_analysis_response(analysis_text)
-            
-            logger.info(f"Successfully analyzed document: {filename}")
+            analysis_result['sources'] = sources
+
+            logger.info(f"Successfully analyzed document: {filename} "
+                        f"(grounded on {len(sources)} legal sources)")
             return analysis_result
-            
+
         except Exception as e:
             logger.error(f"Document analysis error: {str(e)}")
             return {
                 'summary': 'Analysis failed due to technical error',
                 'key_points': ['Unable to analyze document at this time'],
                 'warnings': ['Please try again later or contact support'],
+                'sources': [],
                 'error': str(e)
             }
     
-    def answer_question(self, document_text: str, question: str) -> Dict:
+    def answer_question(self, document_text: str, question: str, document_id: str = None) -> Dict:
         """
-        Answer specific questions about the document
-        
+        Answer a question about the document using hybrid RAG: the question is used to retrieve the
+        most relevant chunks of the uploaded document AND relevant Indian law/precedent, which are
+        fed to the model instead of the whole (truncated) document.
+
         Args:
-            document_text: Full document text
+            document_text: Full document text (fallback if retrieval is unavailable)
             question: User's question
-        
+            document_id: Storage id, used to retrieve this document's chunks
+
         Returns:
-            Dictionary with answer and source information
+            Dictionary with answer, source_section, confidence, and a 'sources' citation list
         """
-        
+
         try:
-            # Prepare the Q&A prompt
+            retr = rag_service.retrieve(question, document_id=document_id,
+                                        include_doc=True, include_kb=True)
+
+            # Document context: retrieved chunks if available, else fall back to (capped) full text.
+            if retr and retr.doc_hits:
+                document_context = "\n\n".join(f"[D{i}] {h.text.strip()}"
+                                               for i, h in enumerate(retr.doc_hits, 1))
+            else:
+                document_context = document_text[:QA_FALLBACK_DOC_CHARS]
+
+            legal_context = ""
+            sources = []
+            if retr:
+                legal_context = retr.format_kb()
+                sources = retr.citations()
+
             prompt = self.qa_prompt.format(
-                document_text=document_text[:8000],  # Limit text length
-                question=question
+                document_context=document_context,
+                legal_context=legal_context or "(no external legal context retrieved)",
+                question=question,
             )
             
             # Generate answer
@@ -138,26 +177,37 @@ class AIAnalyzer:
             
             # Parse the response
             answer_result = self._parse_qa_response(answer_text)
-            
-            logger.info(f"Successfully answered question: {question[:50]}...")
+            answer_result['sources'] = sources
+
+            logger.info(f"Successfully answered question: {question[:50]}... "
+                        f"(doc_hits={len(retr.doc_hits) if retr else 0}, "
+                        f"legal_sources={len(sources)})")
             return answer_result
-            
+
         except Exception as e:
             logger.error(f"Question answering error: {str(e)}")
             return {
                 'answer': 'Unable to answer question due to technical error',
                 'source_section': None,
                 'confidence': 'low',
+                'sources': [],
                 'error': str(e)
             }
     
     def _get_analysis_prompt(self) -> str:
         """Get the prompt template for document analysis"""
         return """
-You are a legal document analysis AI. Analyze the following legal document and provide a structured response.
+You are a legal document analysis AI specializing in Indian law. Analyze the following legal
+document and provide a structured response. Use the RETRIEVED INDIAN LAW & PRECEDENT below to
+ground your risk assessment and warnings in actual statutes and case law wherever relevant — when
+a clause relates to a provided law, reference it briefly in plain English (e.g. "penalty clauses
+are only enforceable as reasonable compensation under Section 74 of the Indian Contract Act").
 
 Document: {filename}
 Content: {document_text}
+
+RETRIEVED INDIAN LAW & PRECEDENT (grounding — cite where relevant, do not invent laws):
+{legal_context}
 
 Please provide your analysis in the following JSON format:
 {{
@@ -191,126 +241,141 @@ Respond only with the JSON format above, no extra text.
     def _get_qa_prompt(self) -> str:
         """Get the prompt template for question answering"""
         return """
-You are a legal document Q&A assistant. Answer the user's question based on the provided document.
+You are a legal document Q&A assistant specializing in Indian law. Answer the user's question
+using the retrieved excerpts from THEIR document below. For questions about legality, fairness, or
+rights, also use the retrieved Indian law & precedent to ground your answer and cite it plainly.
 
-Document Content: {document_text}
+RETRIEVED EXCERPTS FROM THE USER'S DOCUMENT:
+{document_context}
+
+RELEVANT INDIAN LAW & PRECEDENT (use for legal grounding; do not invent laws):
+{legal_context}
 
 User Question: {question}
 
 Please provide your response in the following JSON format:
 {{
-    "answer": "Clear, direct answer to the user's question based on the document",
-    "source_section": "The specific section or clause that contains this information (if identifiable)",
-    "confidence": "high/medium/low based on how clearly the document addresses this question"
+    "answer": "Clear, direct answer. Base facts about the contract strictly on the document excerpts. For legal points, reference the relevant Indian law/precedent by name.",
+    "source_section": "The specific clause in the user's document (or law) that supports this, if identifiable",
+    "confidence": "high/medium/low based on how clearly the excerpts address this question"
 }}
 
 Guidelines:
-1. Only answer based on information actually present in the document
-2. If the information is not in the document, clearly state that
-3. Explain legal terms in plain English
-4. Be specific and cite relevant sections when possible
-5. If the answer is unclear or ambiguous, indicate that
+1. Base statements about the contract only on the provided document excerpts.
+2. If the document excerpts do not contain the answer, clearly say so (don't guess the contract's contents).
+3. Explain legal terms in plain English; cite Indian statutes/precedent only from the provided legal context.
+4. If the answer is unclear or ambiguous, indicate that.
 
 Respond only with the JSON format above.
 """
     
+    @staticmethod
+    def _strip_fence(text: str) -> str:
+        """Drop a surrounding ```json … ``` fence if the model added one anyway."""
+        stripped = (text or "").strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r'^```[a-zA-Z]*\s*', '', stripped)
+            stripped = re.sub(r'\s*```$', '', stripped)
+        return stripped.strip()
+
+    def _load_json(self, response_text: str):
+        """Best-effort JSON parse of a model reply; None if it isn't recoverable."""
+        cleaned = self._strip_fence(response_text)
+        candidates = [cleaned]
+        braces = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if braces:
+            candidates.append(braces.group())
+
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        return None
+
     def _parse_analysis_response(self, response_text: str) -> Dict:
         """Parse AI response for document analysis"""
-        try:
-            # Try to extract JSON from the response
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                result = json.loads(json_str)
-                
-                # Validate required fields
-                required_fields = ['summary', 'key_points', 'warnings']
-                for field in required_fields:
-                    if field not in result:
-                        result[field] = []
-                
-                return result
-            else:
-                # Fallback parsing if JSON extraction fails
-                return self._fallback_parse_analysis(response_text)
-                
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse JSON response, using fallback")
-            return self._fallback_parse_analysis(response_text)
-    
+        result = self._load_json(response_text)
+        if result is None:
+            logger.warning("Failed to parse analysis JSON, using fallback")
+            return self._fallback_parse_analysis(self._strip_fence(response_text))
+
+        for field in ('summary', 'key_points', 'warnings'):
+            if field not in result:
+                result[field] = [] if field != 'summary' else ''
+        return result
+
     def _parse_qa_response(self, response_text: str) -> Dict:
         """Parse AI response for question answering"""
-        try:
-            # Try to extract JSON from the response
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                result = json.loads(json_str)
-                
-                # Validate required fields
-                if 'answer' not in result:
-                    result['answer'] = response_text
-                if 'source_section' not in result:
-                    result['source_section'] = None
-                if 'confidence' not in result:
-                    result['confidence'] = 'medium'
-                
-                return result
-            else:
-                # Fallback if JSON extraction fails
-                return {
-                    'answer': response_text,
-                    'source_section': None,
-                    'confidence': 'medium'
-                }
-                
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse JSON response for Q&A")
-            return {
-                'answer': response_text,
-                'source_section': None,
-                'confidence': 'low'
-            }
+        result = self._load_json(response_text)
+
+        if result is None:
+            # Salvage the answer text rather than showing the user a raw JSON blob.
+            cleaned = self._strip_fence(response_text)
+            salvaged = re.search(r'"answer"\s*:\s*"(.*?)"\s*(?:,\s*"(?:source_section|confidence)"|\}\s*$)',
+                                 cleaned, re.DOTALL)
+            answer = salvaged.group(1).replace('\\n', '\n').replace('\\"', '"') if salvaged else cleaned
+            logger.warning("Failed to parse Q&A JSON; returning salvaged answer text")
+            return {'answer': answer, 'source_section': None, 'confidence': 'low'}
+
+        result.setdefault('answer', self._strip_fence(response_text))
+        result.setdefault('source_section', None)
+        if result.get('confidence') not in ('high', 'medium', 'low'):
+            result['confidence'] = 'medium'
+        return result
     
-    def _call_gemini_api(self, prompt: str) -> str:
-        """Call Gemini API using REST API"""
-        try:
-            headers = {
-                'Content-Type': 'application/json',
-            }
-            
-            data = {
-                "contents": [{
-                    "parts": [{
-                        "text": prompt
-                    }]
-                }]
-            }
-            
-            # Make the API call
-            url = f"{self.api_url}?key={self.gemini_api_key}"
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            
+    def _call_gemini_api(self, prompt: str, max_retries: int = 3, as_json: bool = True) -> str:
+        """
+        Call the Gemini REST API, retrying transient 429/500/503 errors with backoff.
+
+        Both prompts ask for JSON, so we request `application/json` explicitly. Without it
+        the model wraps its reply in a ```json fence and is free to leave unescaped quotes
+        inside string values, which breaks parsing and leaks the raw fence into the answer
+        the user reads.
+        """
+        import time
+        # `role` is optional on the AI Studio API but required by Vertex AI, which rejects
+        # a role-less turn with 400 "Please use a valid role". Sending it always is valid
+        # for both backends.
+        data = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
+        if as_json:
+            data["generationConfig"] = {"responseMimeType": "application/json"}
+
+        last_status = None
+        for attempt in range(max_retries):
+            # Rebuilt each attempt so an expired Vertex bearer token is refreshed on retry.
+            url, headers = genai_backend.request_args(self.model)
+            try:
+                response = requests.post(url, headers=headers, json=data, timeout=60)
+            except Exception as e:
+                logger.warning(f"Gemini request error (attempt {attempt+1}): {e}")
+                time.sleep(2 * (attempt + 1))
+                continue
+
             if response.status_code == 200:
                 result = response.json()
-                if 'candidates' in result and len(result['candidates']) > 0:
-                    if 'content' in result['candidates'][0] and 'parts' in result['candidates'][0]['content']:
-                        return result['candidates'][0]['content']['parts'][0]['text']
-                    else:
-                        logger.error("Unexpected API response structure")
-                        return "Error: Unexpected response format"
-                else:
-                    logger.error("No candidates in API response")
-                    return "Error: No response generated"
-            else:
-                logger.error(f"API call failed with status {response.status_code}: {response.text[:500]}")
-                if response.status_code == 404:
-                    logger.error("404 likely means the model name is incorrect or not available in your region")
-                return f"Error: API call failed ({response.status_code})"
-                
-        except Exception as e:
-            logger.error(f"Error calling Gemini API: {str(e)}")
-            return f"Error: {str(e)}"
+                candidates = result.get('candidates') or []
+                if candidates and 'content' in candidates[0] and 'parts' in candidates[0]['content']:
+                    return candidates[0]['content']['parts'][0]['text']
+                logger.error("Unexpected API response structure / no candidates")
+                return "Error: No response generated"
+
+            last_status = response.status_code
+            # Retry transient overload/rate-limit/server errors; fail fast on the rest.
+            if response.status_code in (429, 500, 503) and attempt < max_retries - 1:
+                wait = 2 * (attempt + 1)
+                logger.warning(f"Gemini {response.status_code} (attempt {attempt+1}); retrying in {wait}s")
+                time.sleep(wait)
+                continue
+
+            logger.error(f"API call failed with status {response.status_code}: {response.text[:500]}")
+            if response.status_code == 404:
+                logger.error("404 likely means the model name is incorrect or not available in your region")
+            break
+
+        return f"Error: API call failed ({last_status})"
     
     def _fallback_parse_analysis(self, response_text: str) -> Dict:
         """Fallback parsing when JSON parsing fails"""

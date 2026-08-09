@@ -1,0 +1,434 @@
+{
+  "model": "gemini-2.5-flash",
+  "document": "rent_deed.txt",
+  "mean_similarity": 0.9815086406306763,
+  "n_compared": 3,
+  "rows": [
+    {
+      "question": "Is the non-refundable security deposit in this agreement legally enforceable in India?",
+      "similarity": 0.9786279380035302,
+      "chroma": {
+        "answer": "No, the clause stating the security deposit is \"NON-REFUNDABLE\" and \"shall stand forfeited to the Lessor in all circumstances whatsoever, including normal expiry of the lease\" (as per Clause 3 of your Rental Deed) is unlikely to be fully enforceable as written under Indian law. In India, courts treat such clauses, if they are essentially a penalty, as subject to the principles of liquidated damages. While parties can agree on a fixed sum for a breach, courts will only award reasonable compensation up to that amount and will not enforce it if it is deemed a penalty. Forfeiting the entire deposit even upon normal expiry of the lease, without any actual loss to the Lessor, would likely be considered a penalty rather than reasonable compensation, and thus may not be upheld by a court. This is grounded in the principles of Section 74 of the Indian Contract Act, 1872, as explained in the definition of \"Liquidated damages\".",
+        "confidence": "high",
+        "sources": [
+          {
+            "type": "statute",
+            "source": "The Indian Contract Act, 1872",
+            "section": "Section 58",
+            "citation": "Act No. 09",
+            "score": 0.79
+          },
+          {
+            "type": "glossary",
+            "source": "Legal glossary (Legal EASE)",
+            "section": "Liquidated damages",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.788
+          },
+          {
+            "type": "statute",
+            "source": "The Indian Contract Act, 1872",
+            "section": "Section 36",
+            "citation": "Act No. 09",
+            "score": 0.787
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Liability cap far below fees paid",
+            "citation": null,
+            "score": 0.784
+          },
+          {
+            "type": "judgment",
+            "source": "State Bank Of India vs The Consortium Of Mr Murari Lal Jalan",
+            "section": null,
+            "citation": null,
+            "score": 0.782
+          },
+          {
+            "type": "statute",
+            "source": "The Negotiable Instruments Act, 1881",
+            "section": "Section 135",
+            "citation": "Act No. 26",
+            "score": 0.78
+          },
+          {
+            "type": "judgment",
+            "source": "State Of Himachal Pradesh Ors vs M S Shivalik Agro Poly Products Ors",
+            "section": null,
+            "citation": "AIR 2004 SUPREME COURT 4393, 2004 (8) SCC 556,",
+            "score": 0.778
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Class-action / collective-remedy waiver",
+            "citation": null,
+            "score": 0.774
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Unlimited liability for you, capped liability for them",
+            "citation": null,
+            "score": 0.771
+          }
+        ]
+      },
+      "qdrant": {
+        "answer": "While the Rental Deed states in Clause 3 that the security deposit of Rs. 6,60,000 is \"NON-REFUNDABLE and shall stand forfeited to the Lessor in all circumstances whatsoever, including normal expiry of the lease,\" its legal enforceability in India is subject to scrutiny. Indian law views such pre-determined sums, if they function as a penalty, differently than a genuine pre-estimate of damages. As per the definition of Liquidated damages (referencing Section 74, Indian Contract Act, 1872), courts in India award only reasonable compensation up to the agreed amount and will not enforce the sum if it is determined to be a penalty. Therefore, despite the clause, a court may not enforce the forfeiture of the entire deposit if it is deemed a penalty rather than a reasonable pre-estimate of actual loss, or if it is forfeited even upon normal expiry without actual damages to the Lessor.",
+        "confidence": "high",
+        "sources": [
+          {
+            "type": "statute",
+            "source": "The Indian Contract Act, 1872",
+            "section": "Section 58",
+            "citation": "Act No. 09",
+            "score": 0.79
+          },
+          {
+            "type": "glossary",
+            "source": "Legal glossary (Legal EASE)",
+            "section": "Liquidated damages",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.788
+          },
+          {
+            "type": "statute",
+            "source": "The Indian Contract Act, 1872",
+            "section": "Section 36",
+            "citation": "Act No. 09",
+            "score": 0.787
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Liability cap far below fees paid",
+            "citation": null,
+            "score": 0.784
+          },
+          {
+            "type": "judgment",
+            "source": "State Bank Of India vs The Consortium Of Mr Murari Lal Jalan",
+            "section": null,
+            "citation": null,
+            "score": 0.782
+          },
+          {
+            "type": "statute",
+            "source": "The Negotiable Instruments Act, 1881",
+            "section": "Section 135",
+            "citation": "Act No. 26",
+            "score": 0.78
+          },
+          {
+            "type": "judgment",
+            "source": "State Of Himachal Pradesh Ors vs M S Shivalik Agro Poly Products Ors",
+            "section": null,
+            "citation": "AIR 2004 SUPREME COURT 4393, 2004 (8) SCC 556,",
+            "score": 0.778
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Class-action / collective-remedy waiver",
+            "citation": null,
+            "score": 0.774
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Unlimited liability for you, capped liability for them",
+            "citation": null,
+            "score": 0.771
+          }
+        ]
+      }
+    },
+    {
+      "question": "Is the penalty of paying the entire balance rent for early termination valid under Indian law?",
+      "similarity": 0.986405130551894,
+      "chroma": {
+        "answer": "Under the rental deed, if the Lessee vacates before the 36-month lock-in period for any reason, they are liable to pay the entire balance rent for the unexpired period immediately, described as liquidated damages, in addition to forfeiting the security deposit. While the contract specifies this amount as liquidated damages, Indian law, specifically Section 74 of the Indian Contract Act, 1872, as noted in the definition of 'Liquidated damages' and the 'Red flag: Excessive liquidated damages / penalty' context, states that courts will only award reasonable compensation up to the amount stipulated, and will not enforce it if it is truly a penalty far exceeding genuine loss. Therefore, while the clause exists in the deed, a court under Indian law would likely only award a 'reasonable compensation' for the breach, rather than the full unexpired rent if it is deemed excessive.",
+        "confidence": "high",
+        "sources": [
+          {
+            "type": "judgment",
+            "source": "Smt Gian Devi Anand vs Jeeevan Kumar And Others",
+            "section": null,
+            "citation": "1985 AIR 796, 1985 SCR SUPL. (1) 1, AIR 1985",
+            "score": 0.823
+          },
+          {
+            "type": "judgment",
+            "source": "New Delhi Municipal Council vs Association Of Concerned Citizens Of",
+            "section": null,
+            "citation": "AIRONLINE 2019 SC 2387, AIRONLINE 2019 SC 1718,",
+            "score": 0.816
+          },
+          {
+            "type": "statute",
+            "source": "The Indian Partnership Act, 1932",
+            "section": "Section 51",
+            "citation": "Act No. 09",
+            "score": 0.801
+          },
+          {
+            "type": "glossary",
+            "source": "Legal glossary (Legal EASE)",
+            "section": "Liquidated damages",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.798
+          },
+          {
+            "type": "statute",
+            "source": "The Sale of Goods Act, 1930",
+            "section": "Section 13",
+            "citation": "Act No. 03",
+            "score": 0.797
+          },
+          {
+            "type": "statute",
+            "source": "The Negotiable Instruments Act, 1881",
+            "section": "Section 32",
+            "citation": "Act No. 26",
+            "score": 0.796
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Long lock-in with full-term penalty",
+            "citation": null,
+            "score": 0.794
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "No cure period before termination",
+            "citation": null,
+            "score": 0.786
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Excessive liquidated damages / penalty",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.786
+          }
+        ]
+      },
+      "qdrant": {
+        "answer": "The rental deed states that if the Lessee vacates before the 36-month lock-in period, they must pay the entire balance rent for the unexpired period immediately, categorized as liquidated damages, in addition to forfeiting the security deposit. Under Indian law, while parties can agree on a fixed sum for liquidated damages in advance, courts typically award only 'reasonable compensation' up to that amount if a contract is breached. If the stipulated amount is deemed to be a penalty rather than a genuine pre-estimate of loss, courts will not enforce the full penalty amount. Therefore, while the clause exists in your document, an Indian court, referring to Section 74 of the Indian Contract Act, 1872, would likely award only reasonable compensation for the breach, not necessarily the entire balance rent if it is considered excessive or a penalty.",
+        "confidence": "high",
+        "sources": [
+          {
+            "type": "judgment",
+            "source": "Smt Gian Devi Anand vs Jeeevan Kumar And Others",
+            "section": null,
+            "citation": "1985 AIR 796, 1985 SCR SUPL. (1) 1, AIR 1985",
+            "score": 0.823
+          },
+          {
+            "type": "judgment",
+            "source": "New Delhi Municipal Council vs Association Of Concerned Citizens Of",
+            "section": null,
+            "citation": "AIRONLINE 2019 SC 2387, AIRONLINE 2019 SC 1718,",
+            "score": 0.816
+          },
+          {
+            "type": "statute",
+            "source": "The Indian Partnership Act, 1932",
+            "section": "Section 51",
+            "citation": "Act No. 09",
+            "score": 0.801
+          },
+          {
+            "type": "glossary",
+            "source": "Legal glossary (Legal EASE)",
+            "section": "Liquidated damages",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.798
+          },
+          {
+            "type": "statute",
+            "source": "The Sale of Goods Act, 1930",
+            "section": "Section 13",
+            "citation": "Act No. 03",
+            "score": 0.797
+          },
+          {
+            "type": "statute",
+            "source": "The Negotiable Instruments Act, 1881",
+            "section": "Section 32",
+            "citation": "Act No. 26",
+            "score": 0.796
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Long lock-in with full-term penalty",
+            "citation": null,
+            "score": 0.794
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "No cure period before termination",
+            "citation": null,
+            "score": 0.786
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Excessive liquidated damages / penalty",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.786
+          }
+        ]
+      }
+    },
+    {
+      "question": "Can the landlord increase the rent at his sole discretion as clause 2 of this deed says?",
+      "similarity": 0.979492853336605,
+      "chroma": {
+        "answer": "Yes, according to Clause 2 of the Rental Deed, the Lessor (landlord) *may* revise the rent upward at his sole discretion at any time by giving 7 days notice. The Lessee (tenant) explicitly agrees to have no right to object to or contest such a revision.\n\nHowever, it is important to note that a clause granting one party a unilateral right to modify terms, such as revising rent at their sole discretion, is identified as a high-risk \"red-flag clause.\" Such clauses are risky because they allow one party to alter key terms without the other's consent. Under Indian law, this type of provision may be considered an \"unfair contract\" as per Section 2(46) of the Consumer Protection Act, 2019.",
+        "confidence": "high",
+        "sources": [
+          {
+            "type": "judgment",
+            "source": "Mahant Ramdhan Puri vs Bankey Bihari Saran Others",
+            "section": null,
+            "citation": "1958 AIR 941, 1959 SCR 1085, AIR 1958 SUPREME",
+            "score": 0.81
+          },
+          {
+            "type": "judgment",
+            "source": "Mallappa Basappa Desai vs Mallappa Veerabhadrappa Desai And",
+            "section": null,
+            "citation": "1965 AIR 658, 1965 SCR (1) 168",
+            "score": 0.81
+          },
+          {
+            "type": "statute",
+            "source": "The Transfer of Property Act, 1882",
+            "section": "Section 4",
+            "citation": "Act No. 04",
+            "score": 0.799
+          },
+          {
+            "type": "statute",
+            "source": "The Transfer of Property Act, 1882",
+            "section": "Section 3",
+            "citation": "Act No. 04",
+            "score": 0.794
+          },
+          {
+            "type": "statute",
+            "source": "The Sale of Goods Act, 1930",
+            "section": "Section 10",
+            "citation": "Act No. 03",
+            "score": 0.792
+          },
+          {
+            "type": "glossary",
+            "source": "Legal glossary (Legal EASE)",
+            "section": "Liquidated damages",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.791
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Unilateral right to modify terms",
+            "citation": "Consumer Protection Act, 2019, s.2(46) unfair contract",
+            "score": 0.76
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "One-sided cost / legal-fee shifting",
+            "citation": null,
+            "score": 0.757
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Liability cap far below fees paid",
+            "citation": null,
+            "score": 0.756
+          }
+        ]
+      },
+      "qdrant": {
+        "answer": "Clause 2 of your Rental Deed states that the Lessor (landlord) may revise the rent upward at his sole discretion at any time by giving 7 days notice, and the Lessee (tenant) shall have no right to object to or contest such revision. However, under Indian law, a clause granting one party a unilateral right to modify terms, such as rent, is identified as a 'Red-flag clause' and is considered an 'unfair contract' under Section 2(46) of the Consumer Protection Act, 2019. While the deed permits this action, such a clause could be challenged for its fairness.",
+        "confidence": "high",
+        "sources": [
+          {
+            "type": "judgment",
+            "source": "Mahant Ramdhan Puri vs Bankey Bihari Saran Others",
+            "section": null,
+            "citation": "1958 AIR 941, 1959 SCR 1085, AIR 1958 SUPREME",
+            "score": 0.81
+          },
+          {
+            "type": "judgment",
+            "source": "Mallappa Basappa Desai vs Mallappa Veerabhadrappa Desai And",
+            "section": null,
+            "citation": "1965 AIR 658, 1965 SCR (1) 168",
+            "score": 0.81
+          },
+          {
+            "type": "statute",
+            "source": "The Transfer of Property Act, 1882",
+            "section": "Section 4",
+            "citation": "Act No. 04",
+            "score": 0.799
+          },
+          {
+            "type": "statute",
+            "source": "The Transfer of Property Act, 1882",
+            "section": "Section 3",
+            "citation": "Act No. 04",
+            "score": 0.794
+          },
+          {
+            "type": "statute",
+            "source": "The Sale of Goods Act, 1930",
+            "section": "Section 10",
+            "citation": "Act No. 03",
+            "score": 0.792
+          },
+          {
+            "type": "glossary",
+            "source": "Legal glossary (Legal EASE)",
+            "section": "Liquidated damages",
+            "citation": "Section 74, Indian Contract Act, 1872",
+            "score": 0.791
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Unilateral right to modify terms",
+            "citation": "Consumer Protection Act, 2019, s.2(46) unfair contract",
+            "score": 0.76
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "One-sided cost / legal-fee shifting",
+            "citation": null,
+            "score": 0.757
+          },
+          {
+            "type": "redflag",
+            "source": "Red-flag reference (Legal EASE)",
+            "section": "Liability cap far below fees paid",
+            "citation": null,
+            "score": 0.756
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -33,6 +33,29 @@ def create_app():
     except ValueError as e:
         logger.error(f"Configuration error: {e}")
         raise
+
+    # Wire vector-store eviction: when a stored document is deleted or expires, drop its chunks too.
+    from services import rag_service
+    document_storage.on_evict = rag_service.delete_document
+
+    # Warm the retriever in the background. Loading InLegalBERT and opening the Chroma
+    # index takes tens of seconds; doing it in a daemon thread means the port starts
+    # listening immediately (so Cloud Run's startup probe passes) while the model loads
+    # in parallel, instead of the first user's upload paying the whole cost.
+    if os.getenv('RAG_WARMUP', '1') != '0':
+        import threading
+
+        def _warm():
+            try:
+                logger.info("Warming RAG retriever...")
+                if rag_service.available():
+                    logger.info("✅ RAG retriever warm")
+                else:
+                    logger.warning("⚠️ RAG retriever unavailable after warm-up")
+            except Exception as e:
+                logger.warning(f"RAG warm-up failed (will retry on first request): {e}")
+
+        threading.Thread(target=_warm, name='rag-warmup', daemon=True).start()
     
     # In production the frontend is served by Flask (same origin), so CORS only
     # matters for external API callers. In development we proxy from port 3000.
@@ -41,6 +64,12 @@ def create_app():
     else:
         CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
     
+    # Register document routes (delete / info / stats). The frontend's "Erase now"
+    # button calls DELETE /api/document/delete/<id>, so the prefix must match.
+    from api.document_routes import document_bp
+    app.register_blueprint(document_bp, url_prefix='/api/document')
+    logger.info("✅ Document routes registered")
+
     # Register WhatsApp blueprint
     try:
         from api.whatsapp_routes import whatsapp_bp
@@ -183,13 +212,17 @@ def create_app():
             
             # Store document text
             document_id = document_storage.store_document(extracted_text, safe_filename)
-            
-            # Analyze document with AI
-            analysis_result = ai_analyzer.analyze_document(extracted_text, safe_filename)
-            
+
+            # Index the uploaded document into the vector store (for retrieval-based Q&A)
+            from services import rag_service
+            rag_service.index_document(document_id, extracted_text)
+
+            # Analyze document with AI (grounded on the legal knowledge base)
+            analysis_result = ai_analyzer.analyze_document(extracted_text, safe_filename, document_id)
+
             # Update document with analysis results
             document_storage.update_analysis(document_id, analysis_result)
-            
+
             # Prepare response
             response_data = {
                 'success': True,
@@ -200,6 +233,7 @@ def create_app():
                     'document_id': document_id,
                     'risk_score': analysis_result.get('risk_score', 5),
                     'document_type': analysis_result.get('document_type', 'Legal Document'),
+                    'sources': analysis_result.get('sources', []),
                 },
                 'document_info': {
                     'filename': safe_filename,
@@ -300,15 +334,16 @@ def create_app():
             
             logger.info(f"Answering question for document {document_id}: {question[:50]}...")
             
-            # Answer question using AI
-            answer_result = ai_analyzer.answer_question(document_text, question)
-            
+            # Answer question using hybrid RAG (retrieved doc chunks + legal KB)
+            answer_result = ai_analyzer.answer_question(document_text, question, document_id)
+
             # Prepare response
             response_data = {
                 'success': True,
                 'answer': answer_result.get('answer', 'Unable to provide answer'),
                 'source_section': answer_result.get('source_section'),
                 'confidence': answer_result.get('confidence', 'medium'),
+                'sources': answer_result.get('sources', []),
                 'document_id': document_id,
                 'question': question,
                 'answered_at': datetime.utcnow().isoformat() + 'Z'

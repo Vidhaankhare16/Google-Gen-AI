@@ -1,0 +1,22 @@
+# RAG stack for Legal EASE (Phase 1): embeddings + vector databases.
+# Install into the local venv on top of requirements-local.txt:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-rag.txt
+#
+# Torch is installed separately from the CPU wheel index (above) to avoid pulling CUDA.
+# Versions are pinned after the first successful install for reproducibility.
+
+# Embeddings — InLegalBERT (law-ai/InLegalBERT) via sentence-transformers (mean-pooling wrapper)
+sentence-transformers==5.6.0
+transformers==5.14.1
+# torch is installed from the CPU index (see comment above): torch==2.13.0+cpu
+torch>=2.2
+
+# Vector databases (the comparative study: ChromaDB vs Qdrant)
+chromadb==1.5.9
+qdrant-client==1.18.0
+
+# Not pinned exactly: numpy 2.5.x requires Python >=3.12, which resolves fine in the local
+# 3.13 venv but fails to build the 3.11 container image. Any numpy 2.x satisfies torch,
+# chromadb and sentence-transformers.
+numpy>=2.0,<3

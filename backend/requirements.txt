@@ -1,15 +1,26 @@
+# Production (Cloud Run / Docker) dependencies.
+# The RAG stack — torch, sentence-transformers, chromadb — is installed separately from
+# requirements-rag.txt so torch can come from the CPU wheel index.
+
 Flask==3.0.0
-pymupdf==1.24.5
 Flask-CORS==4.0.0
+Werkzeug==3.0.1
+gunicorn==21.2.0
+
+# PDF processing (pymupdf also backs the Gemini Vision OCR fallback for scanned PDFs)
 PyPDF2==3.0.1
 pdfplumber==0.10.3
-google-cloud-aiplatform==1.38.0
-google-generativeai==0.7.2
-gunicorn==21.2.0
-python-dotenv==1.0.0
-Werkzeug==3.0.1
-requests==2.31.0
+pymupdf==1.24.5
 python-magic==0.4.27
-psutil==5.9.6
+
+# Gemini over REST + credentials for the Vertex AI backend.
+# google-auth alone is enough: services/genai_backend.py mints a bearer token from
+# Application Default Credentials and calls generateContent directly, so neither
+# google-cloud-aiplatform nor google-generativeai is needed (they were never imported).
+requests==2.31.0
+google-auth==2.40.3
+python-dotenv==1.0.0
+
+# WhatsApp integration (optional feature)
 twilio==8.10.0
 phonenumbers==8.13.25

@@ -212,13 +212,15 @@ def add_security_headers(response):
     # Referrer policy
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     
-    # Content Security Policy (basic)
+    # Content Security Policy. Google Fonts is allowed explicitly: the UI's three
+    # typefaces are served from fonts.googleapis.com (stylesheet) and fonts.gstatic.com
+    # (the font files), and a bare 'self' policy silently drops both in production.
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data:; "
-        "font-src 'self'; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
         "connect-src 'self'"
     )
     

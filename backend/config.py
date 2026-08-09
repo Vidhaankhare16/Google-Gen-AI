@@ -21,9 +21,29 @@ class Config:
     # Security
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
+    # Which Gemini backend to use: 'vertex' (OAuth via the service account) or 'studio'
+    # (an API key). Left unset, services.genai_backend infers it from what's configured.
+    AI_BACKEND = os.getenv('AI_BACKEND', '')
+
     @staticmethod
     def validate_config():
-        """Validate that required configuration is present"""
+        """
+        Validate that a usable Gemini backend is configured.
+
+        Either an AI Studio API key, or a GCP project to call Vertex AI in — on Cloud Run
+        the latter needs no key at all, since the attached service account authenticates.
+        """
+        using_vertex = Config.AI_BACKEND.lower() == 'vertex' or (
+            not Config.GEMINI_API_KEY and bool(Config.GOOGLE_CLOUD_PROJECT)
+        )
+        if using_vertex:
+            if not Config.GOOGLE_CLOUD_PROJECT:
+                raise ValueError("AI_BACKEND=vertex requires GOOGLE_CLOUD_PROJECT to be set")
+            return True
+
         if not Config.GEMINI_API_KEY:
-            raise ValueError("Missing required environment variable: GEMINI_API_KEY")
+            raise ValueError(
+                "No Gemini backend configured: set GEMINI_API_KEY, or set AI_BACKEND=vertex "
+                "with GOOGLE_CLOUD_PROJECT to call Vertex AI."
+            )
         return True

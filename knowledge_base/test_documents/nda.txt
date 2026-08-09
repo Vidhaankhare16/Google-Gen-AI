@@ -1,0 +1,32 @@
+NON-DISCLOSURE AGREEMENT
+
+This Non-Disclosure Agreement is made on 20th July 2025 between DataForge Analytics ("Disclosing
+Party") and Ms. Priya Nair, an independent consultant ("Receiving Party").
+
+1. CONFIDENTIAL INFORMATION: "Confidential Information" means any and all information disclosed by
+   the Disclosing Party, in any form, whether or not marked confidential, and shall be deemed to
+   include all information the Receiving Party may create, learn, or conceive during the engagement,
+   with no exclusions for publicly available or independently developed information.
+
+2. OBLIGATIONS: The Receiving Party shall not use or disclose the Confidential Information for any
+   purpose and shall maintain absolute secrecy in perpetuity, with no time limit.
+
+3. NON-COMPETE: During the engagement and for 5 years thereafter, the Receiving Party shall not
+   provide analytics services to any person or entity anywhere in the world.
+
+4. ASSIGNMENT OF IDEAS: All ideas and intellectual property of the Receiving Party, whether or not
+   related to this engagement, are irrevocably assigned to the Disclosing Party.
+
+5. LIQUIDATED DAMAGES: Any breach of this Agreement shall attract liquidated damages of
+   Rs. 50,00,000 per instance, payable immediately, regardless of actual loss.
+
+6. NO REMEDY FOR RECEIVING PARTY: The Disclosing Party makes no warranties and shall have no
+   liability whatsoever to the Receiving Party for any reason.
+
+7. UNILATERAL TERMINATION: The Disclosing Party may terminate the engagement at any time without
+   notice or payment for work done, while the Receiving Party's obligations survive indefinitely.
+
+8. GOVERNING LAW & JURISDICTION: This Agreement is governed by the laws of the State of Delaware,
+   USA, and disputes shall be litigated exclusively in Delaware courts.
+
+Disclosing Party: DataForge Analytics          Receiving Party: Priya Nair
