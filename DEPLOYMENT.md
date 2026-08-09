@@ -1,248 +1,102 @@
-# Legal EASE — Deployment Guide
+# Deploying Legal EASE to Cloud Run
 
-Deploy the Legal EASE AI legal document analysis platform to Google Cloud Run.
+The service is one container: Gunicorn serving the Flask API and the built React app, with
+the InLegalBERT weights and the prebuilt Chroma index baked into the image. Gemini is
+called through Vertex AI using the runtime service account, so no API key is stored
+anywhere.
 
-## Architecture
-
-- **Frontend**: React 18 + TypeScript, built into Flask's `static/` folder
-- **Backend**: Flask 3 + Gunicorn, served on port 8080
-- **AI**: Gemini `gemini-2.0-flash` via Google AI REST API
-- **Infrastructure**: Cloud Run (serverless), Artifact Registry, Secret Manager, Cloud Build
-
----
-
-## Prerequisites
-
-| Tool | Purpose | Required |
-|---|---|---|
-| `gcloud` CLI | Deploy and manage GCP resources | Yes |
-| Google Cloud account | Billing-enabled GCP project | Yes |
-| Gemini API key | AI analysis ([get one here](https://aistudio.google.com/app/apikey)) | Yes |
-| Docker Desktop | Local testing only | No (Cloud Build handles CI/CD) |
-| Node.js 20+ / Python 3.11+ | Local development only | No |
-
-> **Windows users**: Run `.sh` scripts in Git Bash, WSL, or Google Cloud Shell. PowerShell is not supported for these scripts.
-
----
-
-## Quick Deploy (5 minutes)
-
-### Step 1 — One-time GCP setup
+## One-time project setup
 
 ```bash
-export GOOGLE_CLOUD_PROJECT="your-project-id"
-bash setup-gcp.sh
+PROJECT=your-project-id
+gcloud projects create $PROJECT --name="Legal EASE"
+gcloud billing projects link $PROJECT --billing-account=YOUR-BILLING-ID
+gcloud config set project $PROJECT
+
+gcloud services enable \
+  run.googleapis.com cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com aiplatform.googleapis.com
+
+# The runtime service account must be allowed to call Gemini.
+NUM=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:$NUM-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user" --condition=None
 ```
 
-This script:
-- Enables required APIs (Cloud Build, Cloud Run, Artifact Registry, Secret Manager)
-- Creates an Artifact Registry Docker repository named `legal-ease`
-- Prompts for your Gemini API key and stores it in Secret Manager
-- Grants the Cloud Run service account access to the secret
-
-### Step 2 — Configure local environment
+## Build and deploy
 
 ```bash
-cp backend/.env.example backend/.env
+cd frontend && npm run build && cd ..     # the image copies frontend/build
+
+gcloud builds submit \
+  --tag=gcr.io/$PROJECT/legal-ease:v1 \
+  --timeout=3600s --machine-type=e2-highcpu-8
+
+gcloud run deploy legal-ease \
+  --image=gcr.io/$PROJECT/legal-ease:v1 \
+  --region=us-central1 --allow-unauthenticated \
+  --memory=4Gi --cpu=2 --timeout=300 --concurrency=8 --max-instances=3 \
+  --set-env-vars="AI_BACKEND=vertex,GOOGLE_CLOUD_PROJECT=$PROJECT,VERTEX_AI_LOCATION=global,GEMINI_MODEL=gemini-2.5-flash,GEMINI_VISION_MODEL=gemini-2.5-flash,FLASK_ENV=production,VECTOR_DB=chroma,CHROMA_PATH=/app/knowledge_base/vector_store/chroma"
 ```
 
-Edit `backend/.env` — only one variable is required:
+The build takes 10–20 minutes and the image is ~3 GB: torch (CPU wheels), the InLegalBERT
+weights and the ~100 MB Chroma index. `--machine-type=e2-highcpu-8` and the long timeout
+are both needed; the defaults time out.
+
+## Things that will bite you
+
+**`.gcloudignore` must exist.** Without it gcloud falls back to `.gitignore`, which excludes
+`knowledge_base/vector_store` — so the image builds successfully and then has no knowledge
+base, and every answer silently loses its citations.
+
+**Pin numpy loosely.** `numpy>=2.0,<3`. The exact pin from a Python 3.13 dev machine
+(`numpy==2.5.1`) requires Python ≥3.12 and fails against the 3.11 base image.
+
+**`VERTEX_AI_LOCATION=global`.** Regional endpoints do not serve every model in every
+region; `us-central1` did not serve `gemini-2.5-flash` here.
+
+**Vertex requires `"role": "user"`** on each `contents` entry. The AI Studio API defaults it;
+Vertex returns `400 Please use a valid role`.
+
+**One worker, several threads.** Each Gunicorn worker loads its own copy of InLegalBERT
+(~450 MB) and its own Chroma client, so `--workers 1 --threads 8` is deliberate. Memory
+below 4 GiB will OOM during model load.
+
+**Cold starts are slow.** The container starts listening immediately and warms the
+retriever on a background thread (`RAG_WARMUP=0` disables it), but a request arriving
+during warm-up still waits for the model. The frontend allows 180 s. Set
+`--min-instances=1` if you want that gone, at the cost of an always-billed instance.
+
+## Verifying a deployment
 
 ```bash
-GEMINI_API_KEY=your-gemini-api-key
+URL=$(gcloud run services describe legal-ease --region=us-central1 --format='value(status.url)')
+
+curl -s $URL/api/health
+curl -s -X POST -F "file=@knowledge_base/test_documents/rent_deed.pdf" $URL/api/analyze | jq '.analysis | {risk_score, document_type, sources: (.sources|length)}'
 ```
 
-Optional variables (defaults shown):
+A healthy response has a non-empty `sources[]`. If `sources` is empty the knowledge base
+did not make it into the image — check `.gcloudignore` first.
+
+## Configuration reference
+
+| Variable | Purpose |
+| --- | --- |
+| `AI_BACKEND` | `vertex` (OAuth) or `studio` (API key) |
+| `GOOGLE_CLOUD_PROJECT` | Project billed for Vertex AI calls |
+| `VERTEX_AI_LOCATION` | `global` recommended |
+| `GEMINI_API_KEY` | Only for `AI_BACKEND=studio` |
+| `GEMINI_MODEL` / `GEMINI_VISION_MODEL` | Text and OCR models |
+| `VECTOR_DB` | `chroma` or `qdrant` |
+| `CHROMA_PATH` | Index location inside the image |
+| `RAG_WARMUP` | `0` to skip background warm-up |
+| `SESSION_TIMEOUT` | Seconds a document is retained |
+
+## Rolling back
 
 ```bash
-FLASK_ENV=production
-PORT=8080
-MAX_FILE_SIZE=10485760   # 10 MB
-SESSION_TIMEOUT=3600     # 1 hour
+gcloud run revisions list --service=legal-ease --region=us-central1
+gcloud run services update-traffic legal-ease --region=us-central1 --to-revisions=REVISION=100
 ```
-
-### Step 3 — Deploy
-
-```bash
-export GOOGLE_CLOUD_PROJECT="your-project-id"
-bash deploy.sh
-```
-
-The deploy script:
-1. Enables all required GCP APIs
-2. Creates the Artifact Registry repo if it doesn't exist
-3. Reads `GEMINI_API_KEY` from `backend/.env` and stores it in Secret Manager
-4. Submits a remote Docker build via **Cloud Build** (no local Docker required)
-5. Deploys to Cloud Run and injects the API key from Secret Manager at runtime
-6. Prints the live service URL on success
-
-### Step 4 — Verify
-
-```bash
-# Get the service URL
-gcloud run services describe legal-ease --region=us-central1 --format="value(status.url)"
-
-# Test the health endpoint
-curl https://YOUR_SERVICE_URL/api/health
-```
-
----
-
-## CI/CD with Cloud Build
-
-`cloudbuild.yaml` defines an automated pipeline triggered on every push to `main`.
-
-**To connect:**
-1. Go to Cloud Build → Triggers → Connect Repository
-2. Select your GitHub repo
-3. Set trigger: push to `main` branch, config file `cloudbuild.yaml`
-4. Set substitutions if needed:
-   - `_REGION`: e.g. `us-central1` (default)
-   - `_SERVICE_NAME`: `legal-ease` (default)
-
-The pipeline builds a versioned image (`$BUILD_ID` tag) plus `latest`, pushes both to Artifact Registry, and deploys to Cloud Run.
-
----
-
-## Manual Cloud Run service definition
-
-To apply `cloud-run-service.yaml` directly (useful for fine-grained config changes without a full rebuild):
-
-```bash
-# Replace placeholders first
-sed -i "s/PROJECT_ID/your-project-id/g; s/REGION/us-central1/g" cloud-run-service.yaml
-
-gcloud run services replace cloud-run-service.yaml --region=us-central1
-```
-
----
-
-## Local Development
-
-### Option A — Docker Compose (closest to production)
-
-```bash
-# Requires backend/.env with GEMINI_API_KEY set
-docker-compose up --build
-```
-
-Open: http://localhost:8080
-
-### Option B — Run services separately
-
-**Terminal 1 — Backend**
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
-
-Backend runs on http://localhost:8080
-
-**Terminal 2 — Frontend dev server**
-```bash
-cd frontend
-npm install
-npm start
-```
-
-Frontend runs on http://localhost:3000 and proxies API calls to port 8080.
-
----
-
-## Cloud Run configuration
-
-| Setting | Value |
-|---|---|
-| Region | us-central1 |
-| CPU | 1 vCPU |
-| Memory | 2 GB |
-| Concurrency | 50 req/instance |
-| Min instances | 0 (scales to zero) |
-| Max instances | 10 |
-| Request timeout | 300 s |
-| Execution environment | gen2 (faster cold start) |
-
-To change these, edit the `gcloud run deploy` flags in `deploy.sh` or the container spec in `cloud-run-service.yaml`.
-
----
-
-## Rate limits
-
-| Endpoint | Limit |
-|---|---|
-| `POST /api/analyze` | 5 requests per 5 minutes |
-| `POST /api/question` | 20 requests per 5 minutes |
-
----
-
-## Monitoring & Logs
-
-```bash
-# Tail live logs
-gcloud run services logs tail legal-ease --region=us-central1
-
-# Read recent logs
-gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="legal-ease"' \
-  --limit=50 --format="table(timestamp, textPayload)"
-```
-
-Health check endpoint: `GET /api/health` — returns `{"status":"healthy",...}` with HTTP 200.
-
----
-
-## Troubleshooting
-
-### 404 from Gemini API
-The model name is incorrect or not available in your region. Current model: `gemini-2.0-flash`. Check [Google AI Studio](https://aistudio.google.com/) for available models.
-
-### `GEMINI_API_KEY` not found in Cloud Run
-Verify the secret exists and the service account has access:
-```bash
-gcloud secrets describe gemini-api-key
-PROJECT_NUMBER=$(gcloud projects describe $GOOGLE_CLOUD_PROJECT --format="value(projectNumber)")
-gcloud secrets get-iam-policy gemini-api-key
-```
-
-### Build fails — `libmagic` not found
-This is installed in the Dockerfile via `apt-get install -y libmagic1`. If you see this error locally (not in Cloud Build), ensure your local Docker image is rebuilt:
-```bash
-docker-compose build --no-cache
-```
-
-### App crashes on startup — missing `GEMINI_API_KEY`
-Only `GEMINI_API_KEY` is required. Verify `backend/.env` contains it and is not the placeholder value.
-
-### Frontend changes not reflected
-The React app is built into `backend/static/` during the Docker build. If you changed frontend code, rebuild the image:
-```bash
-bash deploy.sh
-```
-
----
-
-## Cost estimate (moderate usage)
-
-| Service | Estimated cost |
-|---|---|
-| Cloud Run | $0–10/month (scales to zero) |
-| Cloud Build | ~$0.003/build-minute, first 120 min/day free |
-| Artifact Registry | ~$0.10/GB stored |
-| Secret Manager | ~$0.06/10k API operations |
-| Gemini API | Pay-per-use (free tier available) |
-| **Total** | **~$5–20/month** |
-
----
-
-## Security
-
-- GEMINI_API_KEY stored in **Secret Manager**, never in environment variables at build time
-- HTTPS enforced in production via `require_https()` decorator
-- Rate limiting on all write endpoints
-- All file uploads validated (PDF-only, 10 MB max, magic-byte check)
-- Container runs as non-root user (UID 1000)
-- All Linux capabilities dropped
-- Security headers added to every response (CSP, X-Frame-Options, etc.)
-- `.env` files are in `.gitignore` and `.dockerignore`

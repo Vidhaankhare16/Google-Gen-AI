@@ -1,303 +1,272 @@
-import React, { useState, useMemo } from 'react';
-import {
-  ThemeProvider,
-  createTheme,
-  CssBaseline,
-  GlobalStyles,
-  Box,
-  Container,
-  Typography,
-  Button,
-  AppBar,
-  Toolbar,
-  Chip,
-  IconButton,
-  Tooltip,
-} from '@mui/material';
-import { AutoAwesome, ArrowForward, Gavel, DarkMode, LightMode } from '@mui/icons-material';
+import React, { useState, useMemo, useCallback } from 'react';
+import { ThemeProvider, CssBaseline, Box, Container, Typography, Button, IconButton, Tooltip } from '@mui/material';
+import { DarkModeOutlined, LightModeOutlined } from '@mui/icons-material';
 import DocumentUpload from './components/DocumentUpload';
 import AnalysisResults from './components/AnalysisResults';
 import QAInterface from './components/QAInterface';
+import { Eyebrow } from './components/Annotation';
+import { buildTheme, Mode, MONO, DISPLAY } from './theme';
 import { AnalysisResult } from './types/api';
 
-const buildTheme = (mode: 'dark' | 'light') =>
-  createTheme({
-    palette: {
-      mode,
-      primary: {
-        main: '#7C3AED',
-        light: '#A78BFA',
-        dark: '#5B21B6',
-      },
-      secondary: {
-        main: '#2563EB',
-        light: '#60A5FA',
-        dark: '#1D4ED8',
-      },
-      background: {
-        default: mode === 'dark' ? '#0B0B18' : '#F7F4FF',
-        paper:   mode === 'dark' ? '#141428' : '#FFFFFF',
-      },
-      text: {
-        primary:   mode === 'dark' ? '#F1F5F9' : '#1E1B4B',
-        secondary: mode === 'dark' ? '#94A3B8' : '#64748B',
-      },
-      error:   { main: mode === 'dark' ? '#F87171' : '#DC2626', light: '#FCA5A5' },
-      warning: { main: mode === 'dark' ? '#FBBF24' : '#D97706', light: '#FDE68A' },
-      success: { main: mode === 'dark' ? '#34D399' : '#059669', light: '#A7F3D0' },
-      divider: mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-    },
-    typography: {
-      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-      h1: { fontSize: 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.02em' },
-      h2: { fontSize: '2.25rem', fontWeight: 700, lineHeight: 1.2 },
-      h3: { fontSize: '1.5rem', fontWeight: 700 },
-      h4: { fontSize: '1.25rem', fontWeight: 700 },
-      h5: { fontSize: '1.05rem', fontWeight: 600 },
-      h6: { fontSize: '0.95rem', fontWeight: 600 },
-      body1: { fontSize: '1rem', lineHeight: 1.75 },
-      body2: { fontSize: '0.875rem', lineHeight: 1.6 },
-    },
-    shape: { borderRadius: 16 },
-    components: {
-      MuiButton: {
-        defaultProps: { disableElevation: true },
-        styleOverrides: {
-          root: { textTransform: 'none', fontWeight: 600, borderRadius: 12, fontSize: '0.95rem', transition: 'all 0.2s ease' },
-          containedPrimary: {
-            background: 'linear-gradient(135deg, #7C3AED 0%, #2563EB 100%)',
-            color: '#FFFFFF',
-            '&:hover': { background: 'linear-gradient(135deg, #6D28D9 0%, #1D4ED8 100%)', transform: 'translateY(-1px)', boxShadow: '0 8px 25px rgba(124,58,237,0.35)' },
-            '&.Mui-disabled': { background: 'linear-gradient(135deg, #7C3AED 0%, #2563EB 100%)', opacity: 0.4, color: '#FFFFFF' },
-          },
-        },
-      },
-      MuiChip: {
-        styleOverrides: { root: { borderRadius: 8, fontWeight: 500 } },
-      },
-      MuiPaper: {
-        styleOverrides: {
-          root: ({ theme }: any) => ({
-            backgroundImage: 'none',
-            border: `1px solid ${theme.palette.divider}`,
-          }),
-        },
-      },
-      MuiAppBar: {
-        styleOverrides: {
-          root: ({ theme }: any) => ({
-            backgroundImage: 'none',
-            backgroundColor: theme.palette.mode === 'dark' ? 'rgba(11,11,24,0.85)' : 'rgba(247,244,255,0.85)',
-            backdropFilter: 'blur(20px)',
-            borderBottom: `1px solid ${theme.palette.divider}`,
-            boxShadow: 'none',
-          }),
-        },
-      },
-      MuiTextField: {
-        styleOverrides: {
-          root: ({ theme }: any) => ({
-            '& .MuiOutlinedInput-root': {
-              backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-              '& fieldset': { borderColor: theme.palette.divider },
-              '&:hover fieldset': { borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' },
-              '&.Mui-focused fieldset': { borderColor: '#7C3AED' },
-            },
-          }),
-        },
-      },
-      MuiIconButton: {
-        styleOverrides: { root: { borderRadius: 10 } },
-      },
-    },
-  });
+/** What the knowledge base actually holds — the trust argument, in real numbers. */
+const CORPUS = [
+  { n: '1,791', label: 'statute sections', note: '11 bare Acts + the Constitution' },
+  { n: '7,168', label: 'judgment passages', note: 'Supreme Court of India' },
+  { n: '30', label: 'red-flag clauses', note: 'patterns drafted against you' },
+  { n: '74', label: 'definitions & model clauses', note: 'plain-English references' },
+];
+
+/**
+ * The hero specimen: one real clause from a rent deed with the annotation Legal EASE
+ * would put beside it. The product's output *is* the hero — it argues the thesis
+ * instead of describing it. The margin note arrives a beat after the clause, the way a
+ * reader annotates: read first, then write.
+ */
+const Specimen: React.FC = () => (
+  <Box
+    sx={(theme) => ({
+      mt: { xs: 6, md: 8 },
+      border: `1px solid ${theme.palette.divider}`,
+      borderRadius: 2,
+      bgcolor: 'background.paper',
+      overflow: 'hidden',
+      '@keyframes riseIn': { from: { opacity: 0, transform: 'translateY(10px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+    })}
+  >
+    <Box sx={{ px: { xs: 2.5, md: 3 }, py: 1.25, borderBottom: (t) => `1px solid ${t.palette.divider}`, display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+      <Eyebrow>Specimen · residential lease</Eyebrow>
+      <Eyebrow sx={{ display: { xs: 'none', sm: 'block' } }}>clause 9(b)</Eyebrow>
+    </Box>
+
+    <Box sx={{ p: { xs: 2.5, md: 4 }, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '160px 1px 1fr' }, columnGap: { md: 3.5 }, rowGap: 2 }}>
+      {/* Margin */}
+      <Box sx={{ textAlign: { md: 'right' }, opacity: 0, animation: 'riseIn .5s .75s ease forwards' }}>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.72rem', fontWeight: 600, color: 'primary.main', lineHeight: 1.5 }}>
+          S. 74 · Contract Act
+        </Typography>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text.secondary', mt: 0.5 }}>
+          high risk
+        </Typography>
+        <Typography sx={{ fontFamily: MONO, fontSize: '0.68rem', color: 'text.secondary', mt: 2 }}>
+          AIR 2013 SC 3037
+        </Typography>
+      </Box>
+
+      <Box sx={{ display: { xs: 'none', md: 'block' }, bgcolor: 'primary.main', opacity: 0.4 }} />
+
+      {/* Clause + finding */}
+      <Box sx={{ minWidth: 0 }}>
+        <Typography
+          sx={{
+            fontFamily: DISPLAY, fontSize: { xs: '1.05rem', md: '1.2rem' }, fontStyle: 'italic',
+            lineHeight: 1.6, color: 'text.primary', opacity: 0, animation: 'riseIn .5s .15s ease forwards',
+          }}
+        >
+          “If the Lessee vacates the premises before expiry of the term, the entire security
+          deposit of ₹50,000 shall stand forfeited to the Lessor.”
+        </Typography>
+        <Typography
+          variant="body2"
+          sx={{ mt: 2.5, color: 'text.secondary', maxWidth: '54ch', opacity: 0, animation: 'riseIn .5s .95s ease forwards' }}
+        >
+          Forfeiting the whole deposit is a penalty, not a genuine estimate of the landlord’s loss.
+          Under Section 74 you owe reasonable compensation for loss actually proven — not a fixed
+          sum fixed in advance. Ask for the clause to be capped at one month’s rent.
+        </Typography>
+      </Box>
+    </Box>
+  </Box>
+);
 
 function App() {
-  const [mode, setMode] = useState<'dark' | 'light'>('dark');
+  const [mode, setMode] = useState<Mode>(() => (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [filename, setFilename] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const theme = useMemo(() => buildTheme(mode), [mode]);
 
-  const globalStyles = useMemo(() => ({
-    '*': { boxSizing: 'border-box' },
-    html: { scrollBehavior: 'smooth' },
-    body: { backgroundColor: mode === 'dark' ? '#0B0B18' : '#F7F4FF', margin: 0, fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif' },
-    '::-webkit-scrollbar': { width: '5px', height: '5px' },
-    '::-webkit-scrollbar-track': { background: mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)' },
-    '::-webkit-scrollbar-thumb': { background: 'rgba(124,58,237,0.3)', borderRadius: '3px', '&:hover': { background: 'rgba(124,58,237,0.5)' } },
-  }), [mode]);
-
-  const handleUploadSuccess = (result: AnalysisResult) => {
+  const handleUploadSuccess = useCallback((result: AnalysisResult, name: string) => {
     setAnalysisResult(result);
+    setFilename(name);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, []);
 
-  const handleUploadError = (errorMessage: string) => {
-    if (errorMessage) setError(errorMessage);
+  const handleUploadError = useCallback((message: string) => {
+    setError(message || null);
     setAnalysisResult(null);
-  };
+  }, []);
 
-  const handleNewDocument = () => { setAnalysisResult(null); setError(null); };
+  const handleNewDocument = useCallback(() => {
+    setAnalysisResult(null);
+    setFilename('');
+    setError(null);
+  }, []);
+
+  const scrollToUpload = () => document.getElementById('upload')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <GlobalStyles styles={globalStyles} />
 
-      {/* Navbar */}
-      <AppBar position="fixed" elevation={0}>
-        <Toolbar sx={{ justifyContent: 'space-between', py: 1, px: { xs: 2, md: 4 } }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Box sx={{
-              width: 36, height: 36,
-              background: 'linear-gradient(135deg, #7C3AED, #2563EB)',
-              borderRadius: '10px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(124,58,237,0.35)',
-            }}>
-              <Gavel sx={{ color: 'white', fontSize: 20 }} />
-            </Box>
-            <Typography variant="h6" sx={{
-              background: 'linear-gradient(135deg, #A78BFA 0%, #60A5FA 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              fontWeight: 800,
-              letterSpacing: '-0.01em',
-            }}>
-              Legal EASE
+      {/* ── Masthead ─────────────────────────────────────────────────────── */}
+      <Box
+        component="header"
+        sx={(t) => ({
+          position: 'sticky', top: 0, zIndex: 20,
+          borderBottom: `1px solid ${t.palette.divider}`,
+          bgcolor: t.palette.mode === 'dark' ? 'rgba(16,20,24,0.88)' : 'rgba(228,234,230,0.88)',
+          backdropFilter: 'blur(12px)',
+        })}
+      >
+        <Container maxWidth="lg" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, py: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, minWidth: 0 }}>
+            <Typography sx={{ fontFamily: MONO, fontWeight: 600, fontSize: '0.95rem', letterSpacing: '0.06em', color: 'text.primary' }}>
+              §&nbsp;LEGAL&nbsp;EASE
+            </Typography>
+            <Typography sx={{ display: { xs: 'none', sm: 'block' }, fontFamily: MONO, fontSize: '0.68rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'text.secondary' }}>
+              contracts read against Indian law
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-            {!analysisResult && (
-              <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 3, mr: 1 }}>
-                {['Features', 'How it Works'].map(item => (
-                  <Typography key={item} variant="body2" sx={{ color: 'text.secondary', cursor: 'pointer', '&:hover': { color: 'text.primary' }, transition: 'color 0.2s' }}>
-                    {item}
-                  </Typography>
-                ))}
-              </Box>
-            )}
-
-            {/* Light/Dark toggle */}
-            <Tooltip title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-              <IconButton
-                size="small"
-                onClick={() => setMode(m => m === 'dark' ? 'light' : 'dark')}
-                sx={{
-                  color: 'text.secondary',
-                  bgcolor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  '&:hover': { bgcolor: mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)', color: 'text.primary' },
-                  width: 34, height: 34,
-                }}
-              >
-                {mode === 'dark' ? <LightMode sx={{ fontSize: 18 }} /> : <DarkMode sx={{ fontSize: 18 }} />}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title={mode === 'dark' ? 'Light theme' : 'Dark theme'}>
+              <IconButton size="small" onClick={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))} sx={{ color: 'text.secondary' }} aria-label="Switch theme">
+                {mode === 'dark' ? <LightModeOutlined sx={{ fontSize: 19 }} /> : <DarkModeOutlined sx={{ fontSize: 19 }} />}
               </IconButton>
             </Tooltip>
-
             {analysisResult ? (
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={handleNewDocument}
-                sx={{
-                  borderColor: 'rgba(124,58,237,0.35)',
-                  color: 'primary.light',
-                  '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(124,58,237,0.08)' },
-                }}
-              >
-                ← New Document
-              </Button>
+              <Button size="small" variant="outlined" onClick={handleNewDocument}>Read another</Button>
             ) : (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => document.getElementById('upload-section')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Get Started
-              </Button>
+              <Button size="small" variant="contained" onClick={scrollToUpload}>Read my contract</Button>
             )}
           </Box>
-        </Toolbar>
-      </AppBar>
+        </Container>
+      </Box>
 
-      <Box sx={{ pt: '64px', minHeight: '100vh', bgcolor: 'background.default' }}>
+      <Box component="main" sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
         {!analysisResult ? (
-          <Box>
-            {/* Hero */}
-            <Box sx={{ position: 'relative', overflow: 'hidden', pt: { xs: 8, md: 12 }, pb: { xs: 6, md: 8 }, textAlign: 'center' }}>
-              <Box sx={{ position: 'absolute', top: '-15%', left: '-8%', width: '600px', height: '600px', background: 'radial-gradient(circle, rgba(124,58,237,0.12) 0%, transparent 70%)', borderRadius: '50%', filter: 'blur(60px)', pointerEvents: 'none' }} />
-              <Box sx={{ position: 'absolute', top: '-5%', right: '-5%', width: '500px', height: '500px', background: 'radial-gradient(circle, rgba(37,99,235,0.1) 0%, transparent 70%)', borderRadius: '50%', filter: 'blur(60px)', pointerEvents: 'none' }} />
+          <>
+            {/* ── Hero ───────────────────────────────────────────────────── */}
+            <Container maxWidth="lg" sx={{ pt: { xs: 7, md: 12 }, pb: { xs: 4, md: 6 } }}>
+              <Eyebrow sx={{ color: 'primary.main', mb: 3 }}>Before you sign</Eyebrow>
 
-              <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1 }}>
-                <Chip
-                  icon={<AutoAwesome sx={{ fontSize: '13px !important', color: '#A78BFA !important' }} />}
-                  label="AI-Powered Legal Analysis"
-                  size="small"
-                  sx={{ mb: 4, background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)', color: 'primary.main', px: 1 }}
-                />
+              <Typography variant="h1" sx={{ maxWidth: '16ch' }}>
+                Read the{' '}
+                <Box component="em" sx={{ fontStyle: 'italic', color: 'primary.main' }}>margin</Box>
+                , not just the contract.
+              </Typography>
 
-                <Typography variant="h1" sx={{ mb: 3 }}>
-                  Demystify{' '}
-                  <Box component="span" sx={{ background: 'linear-gradient(135deg, #A78BFA 0%, #60A5FA 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-                    Legal Documents
+              <Typography variant="body1" sx={{ mt: 4, maxWidth: '58ch', color: 'text.secondary', fontSize: '1.05rem' }}>
+                Upload the agreement you were handed. Legal EASE marks the clauses that work
+                against you and puts the Indian statute or judgment that says so right beside
+                each one — so you know what to argue, not just that something feels off.
+              </Typography>
+
+              <Box sx={{ mt: 4.5, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <Button variant="contained" size="large" onClick={scrollToUpload}>Read my contract</Button>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => window.open('https://wa.me/14155238886?text=join%20legal-ease-demo', '_blank', 'noopener')}
+                >
+                  Send one on WhatsApp
+                </Button>
+              </Box>
+
+              <Specimen />
+            </Container>
+
+            {/* ── What it reads against ──────────────────────────────────── */}
+            <Container maxWidth="lg" sx={{ py: { xs: 5, md: 7 } }}>
+              <Eyebrow sx={{ mb: 3 }}>What it reads against</Eyebrow>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' },
+                  borderTop: (t) => `1px solid ${t.palette.divider}`,
+                }}
+              >
+                {CORPUS.map((c) => (
+                  <Box key={c.label} sx={(t) => ({ py: 3, pr: 3, borderBottom: `1px solid ${t.palette.divider}` })}>
+                    <Typography sx={{ fontFamily: DISPLAY, fontSize: '2rem', lineHeight: 1, color: 'text.primary' }}>{c.n}</Typography>
+                    <Typography sx={{ fontFamily: MONO, fontSize: '0.68rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'primary.main', mt: 1.25 }}>
+                      {c.label}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.75 }}>{c.note}</Typography>
                   </Box>
-                  {' '}with AI
-                </Typography>
+                ))}
+              </Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 2.5, maxWidth: '62ch' }}>
+                Every passage is embedded with InLegalBERT, a language model trained on Indian legal
+                text, and retrieved at question time. Answers quote this corpus rather than the
+                model’s own recollection of the law.
+              </Typography>
+            </Container>
 
-                <Typography variant="body1" sx={{ color: 'text.secondary', mb: 5, maxWidth: 560, mx: 'auto', fontSize: '1.1rem' }}>
-                  Transform dense legal jargon into clear, actionable insights.
-                  Understand contracts, NDAs, and agreements before you sign.
-                </Typography>
-
-                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', mb: 5 }}>
-                  <Button variant="contained" size="large" endIcon={<ArrowForward />} onClick={() => document.getElementById('upload-section')?.scrollIntoView({ behavior: 'smooth' })} sx={{ px: 4, py: 1.5 }}>
-                    Analyze a Document
-                  </Button>
-                  <Button
-                    variant="outlined" size="large"
-                    onClick={() => window.open('https://wa.me/14155238886?text=join%20legal-ease-demo', '_blank')}
-                    sx={{ px: 4, py: 1.5, borderColor: 'rgba(37,99,235,0.4)', color: 'secondary.main', '&:hover': { borderColor: 'secondary.main', bgcolor: 'rgba(37,99,235,0.06)' } }}
-                  >
-                    📱 WhatsApp Demo
-                  </Button>
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {['⚡ Instant Analysis', '🔒 Privacy First', '📊 Risk Scoring', '💬 Ask Questions', '🎯 Plain English'].map(f => (
-                    <Chip key={f} label={f} size="small" variant="outlined" sx={{ borderColor: 'divider', color: 'text.secondary', '&:hover': { borderColor: 'text.secondary' } }} />
-                  ))}
-                </Box>
-              </Container>
-            </Box>
-
-            {/* Upload */}
-            <Container maxWidth="md" id="upload-section" sx={{ py: { xs: 4, md: 6 } }}>
+            {/* ── Upload ─────────────────────────────────────────────────── */}
+            <Container maxWidth="md" id="upload" sx={{ pb: { xs: 8, md: 12 }, pt: { xs: 2, md: 3 } }}>
               {error && (
-                <Box sx={{ mb: 3, p: 2, borderRadius: 2, bgcolor: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" sx={{ color: 'error.main' }}>{error}</Typography>
-                  <Button size="small" sx={{ color: 'error.main', minWidth: 'auto', p: 0.5 }} onClick={() => setError(null)}>✕</Button>
+                <Box
+                  role="alert"
+                  sx={(t) => ({
+                    mb: 3, px: 2.5, py: 2, borderRadius: 1.5,
+                    border: `1px solid ${t.palette.primary.main}`,
+                    borderLeft: `3px solid ${t.palette.primary.main}`,
+                    bgcolor: t.palette.mode === 'dark' ? 'rgba(218,102,115,0.08)' : 'rgba(140,29,45,0.05)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2,
+                  })}
+                >
+                  <Box>
+                    <Eyebrow sx={{ color: 'primary.main' }}>Couldn’t read that file</Eyebrow>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>{error}</Typography>
+                  </Box>
+                  <Button size="small" onClick={() => setError(null)} sx={{ color: 'text.secondary', minWidth: 'auto' }}>Dismiss</Button>
                 </Box>
               )}
-              <DocumentUpload onUploadSuccess={handleUploadSuccess} onUploadError={handleUploadError} isProcessing={isProcessing} setIsProcessing={setIsProcessing} />
+              <DocumentUpload
+                onUploadSuccess={handleUploadSuccess}
+                onUploadError={handleUploadError}
+                isProcessing={isProcessing}
+                setIsProcessing={setIsProcessing}
+              />
             </Container>
-          </Box>
+          </>
         ) : (
-          <Container maxWidth="xl" sx={{ py: 3, px: { xs: 2, md: 3 } }}>
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, alignItems: 'flex-start' }}>
-              <Box sx={{ flex: '1 1 58%', minWidth: 0 }}>
-                <AnalysisResults result={analysisResult} onNewDocument={handleNewDocument} />
+          /* ── Reading view ─────────────────────────────────────────────── */
+          <Container maxWidth="xl" sx={{ py: { xs: 3, md: 4 } }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: { xs: 4, lg: 5 }, alignItems: 'flex-start' }}>
+              <Box sx={{ flex: '1 1 62%', minWidth: 0, width: '100%' }}>
+                <AnalysisResults result={analysisResult} filename={filename} onNewDocument={handleNewDocument} />
               </Box>
-              <Box sx={{ flex: '1 1 42%', minWidth: 0, position: { lg: 'sticky' }, top: { lg: '80px' }, maxHeight: { lg: 'calc(100vh - 100px)' }, display: 'flex', flexDirection: 'column' }}>
+              <Box
+                sx={{
+                  flex: '1 1 38%', minWidth: 0, width: '100%',
+                  position: { lg: 'sticky' }, top: { lg: 88 },
+                  height: { lg: 'calc(100vh - 116px)' },
+                  display: 'flex', flexDirection: 'column',
+                }}
+              >
                 <QAInterface documentId={analysisResult.document_id} />
               </Box>
             </Box>
           </Container>
         )}
+      </Box>
+
+      {/* ── Colophon ───────────────────────────────────────────────────── */}
+      <Box component="footer" sx={(t) => ({ borderTop: `1px solid ${t.palette.divider}`, py: 3, mt: 4 })}>
+        <Container maxWidth="lg" sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'space-between' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', maxWidth: '64ch' }}>
+            Legal EASE explains documents. It is not a substitute for a lawyer, and nothing here is
+            legal advice. Uploaded files are held only for your session and then deleted.
+          </Typography>
+          <Typography sx={{ fontFamily: MONO, fontSize: '0.68rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'text.secondary' }}>
+            Gemini · InLegalBERT · Chroma
+          </Typography>
+        </Container>
       </Box>
     </ThemeProvider>
   );

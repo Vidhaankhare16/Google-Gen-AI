@@ -1,44 +1,41 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Typography, TextField, Button, Chip, CircularProgress } from '@mui/material';
-import { Send, ChatBubble, SmartToy, Person } from '@mui/icons-material';
+import { Box, Typography, TextField, Button, CircularProgress } from '@mui/material';
+import { ArrowUpward } from '@mui/icons-material';
 import ApiService from '../services/api';
 import { QuestionAnswer } from '../types/api';
+import { Eyebrow, citeLine, citeKind } from './Annotation';
+import { MONO, DISPLAY, bandColor } from '../theme';
 
-const TypingIndicator = () => (
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.5, py: 0.25 }}>
-    {[0, 150, 300].map((delay, i) => (
-      <Box key={i} sx={{
-        width: 7, height: 7, borderRadius: '50%', bgcolor: 'primary.main', opacity: 0.7,
-        '@keyframes typingBounce': {
-          '0%, 60%, 100%': { transform: 'translateY(0)', opacity: 0.5 },
-          '30%': { transform: 'translateY(-7px)', opacity: 1 },
-        },
-        animation: `typingBounce 1.2s ${delay}ms infinite ease-in-out`,
-      }} />
-    ))}
-  </Box>
-);
+const CONFIDENCE_NOTE: Record<string, string> = {
+  high: 'the document is explicit on this',
+  medium: 'the document implies this',
+  low: 'the document barely covers this',
+};
 
-const CONFIDENCE_COLORS: Record<string, string> = { high: '#059669', medium: '#D97706', low: '#DC2626' };
-const SUGGESTED = [
-  'What are my key obligations?',
-  'Are there any auto-renewal clauses?',
-  'What are the termination conditions?',
-  'What are the liability limitations?',
-  'What happens if I miss a payment?',
+const OPENERS = [
+  'What am I agreeing to do?',
+  'How do I get out of this?',
+  'What happens if I pay late?',
+  'Can they change the terms later?',
+  'Is anything here unenforceable?',
 ];
 
 interface QAInterfaceProps { documentId: string; }
 
+/**
+ * Counsel: a question put to the document, answered from retrieved clauses with the
+ * authority set in the margin — the same device the findings use, so an answer and a
+ * finding are visibly the same kind of object.
+ */
 const QAInterface: React.FC<QAInterfaceProps> = ({ documentId }) => {
   const [question, setQuestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [qaHistory, setQAHistory] = useState<QuestionAnswer[]>([]);
+  const [history, setHistory] = useState<QuestionAnswer[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [qaHistory, isLoading]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [history, isLoading]);
 
   const submit = async (q: string) => {
     const trimmed = q.trim();
@@ -47,166 +44,166 @@ const QAInterface: React.FC<QAInterfaceProps> = ({ documentId }) => {
     try {
       const res = await ApiService.askQuestion(documentId, trimmed);
       if (res.success && res.answer) {
-        setQAHistory(prev => [...prev, { question: trimmed, answer: res.answer!, source_section: res.source_section, confidence: res.confidence || 'medium', document_id: documentId, answered_at: res.answered_at || new Date().toISOString() }]);
+        setHistory((prev) => [...prev, {
+          question: trimmed,
+          answer: res.answer!,
+          source_section: res.source_section,
+          sources: res.sources,
+          confidence: res.confidence || 'medium',
+          document_id: documentId,
+          answered_at: res.answered_at || new Date().toISOString(),
+        }]);
       } else {
-        throw new Error((res as any)?.error?.message || 'Failed to get answer');
+        throw new Error((res as any)?.error?.message || 'No answer came back. Ask again.');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to answer question. Please try again.');
+      setError(err.message || 'That question could not be answered. Ask again.');
     } finally {
       setIsLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 60);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); submit(question); };
-  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(question); } };
-  const unusedSuggestions = SUGGESTED.filter(q => !qaHistory.some(qa => qa.question === q));
+  const unused = OPENERS.filter((q) => !history.some((h) => h.question === q));
 
   return (
-    <Box sx={(theme) => ({
-      display: 'flex', flexDirection: 'column',
-      height: { xs: 'auto', lg: '100%' },
-      minHeight: { xs: '520px', lg: 0 },
-      bgcolor: 'background.paper',
-      borderRadius: '20px',
-      border: `1px solid ${theme.palette.divider}`,
-      overflow: 'hidden',
-      '@keyframes fadeInRight': { from: { opacity: 0, transform: 'translateX(16px)' }, to: { opacity: 1, transform: 'translateX(0)' } },
-      animation: 'fadeInRight 0.4s 0.15s ease forwards',
-      opacity: 0,
-    })}>
+    <Box
+      sx={(t) => ({
+        display: 'flex', flexDirection: 'column',
+        height: { xs: 'auto', lg: '100%' }, minHeight: { xs: 480, lg: 0 },
+        border: `1px solid ${t.palette.divider}`, borderRadius: 2,
+        bgcolor: 'background.paper', overflow: 'hidden',
+      })}
+    >
       {/* Header */}
-      <Box sx={(theme) => ({
-        p: 2.5,
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        background: theme.palette.mode === 'dark'
-          ? 'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(37,99,235,0.04) 100%)'
-          : 'linear-gradient(135deg, rgba(124,58,237,0.05) 0%, rgba(37,99,235,0.03) 100%)',
-        flexShrink: 0,
-      })}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box sx={{ width: 38, height: 38, borderRadius: '11px', background: 'linear-gradient(135deg, #7C3AED, #2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
-            <ChatBubble sx={{ color: 'white', fontSize: 18 }} />
-          </Box>
-          <Box>
-            <Typography variant="h6">Ask About Your Document</Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Powered by Gemini AI</Typography>
-          </Box>
-        </Box>
+      <Box sx={(t) => ({ px: 3, py: 2, borderBottom: `1px solid ${t.palette.divider}`, flexShrink: 0 })}>
+        <Eyebrow sx={{ color: 'primary.main' }}>Counsel</Eyebrow>
+        <Typography sx={{ fontFamily: DISPLAY, fontSize: '1.3rem', mt: 0.5, lineHeight: 1.25 }}>Ask this document</Typography>
       </Box>
 
-      {/* Messages */}
-      <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0 }}>
-        {/* Empty state */}
-        {qaHistory.length === 0 && !isLoading && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, textAlign: 'center', py: 2 }}>
-            <Box sx={{ width: 56, height: 56, borderRadius: '16px', mb: 2, bgcolor: 'rgba(124,58,237,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <SmartToy sx={{ fontSize: 30, color: 'primary.main', opacity: 0.7 }} />
-            </Box>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3, maxWidth: 260 }}>
-              Ask me anything about your document — clauses, obligations, risks, and more.
+      {/* Transcript */}
+      <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5, minHeight: 0 }}>
+        {history.length === 0 && !isLoading && (
+          <Box>
+            <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: '40ch' }}>
+              Questions are answered from the clauses in your file, with the Indian law they turn on
+              set beside the answer. Start with one of these, or write your own.
             </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
-              {SUGGESTED.slice(0, 4).map(q => (
-                <Chip key={q} label={q} size="small" onClick={() => submit(q)} sx={{ cursor: 'pointer', bgcolor: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', color: 'primary.main', '&:hover': { bgcolor: 'rgba(124,58,237,0.15)' }, transition: 'all 0.18s', fontSize: '0.78rem' }} />
+            <Box sx={{ mt: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
+              {OPENERS.map((q) => (
+                <Button
+                  key={q}
+                  onClick={() => submit(q)}
+                  sx={{
+                    px: 0, py: 0.75, justifyContent: 'flex-start', textAlign: 'left', color: 'text.primary',
+                    fontWeight: 400, fontSize: '0.9rem',
+                    '&:hover': { background: 'none', color: 'primary.main' },
+                  }}
+                >
+                  <Box component="span" sx={{ fontFamily: MONO, fontSize: '0.7rem', color: 'primary.main', mr: 1.5 }}>→</Box>
+                  {q}
+                </Button>
               ))}
             </Box>
           </Box>
         )}
 
-        {/* Conversation */}
-        {qaHistory.map((qa, idx) => {
-          const confColor = CONFIDENCE_COLORS[qa.confidence] ?? '#D97706';
-          return (
-            <Box key={idx} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              {/* User */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', gap: 1 }}>
-                <Box sx={{ maxWidth: '82%', px: 2.5, py: 1.75, background: 'linear-gradient(135deg, #7C3AED, #2563EB)', borderRadius: '18px 18px 4px 18px', boxShadow: '0 4px 20px rgba(124,58,237,0.22)' }}>
-                  <Typography variant="body2" sx={{ color: 'white', lineHeight: 1.65 }}>{qa.question}</Typography>
-                </Box>
-                <Box sx={{ width: 28, height: 28, flexShrink: 0, borderRadius: '50%', bgcolor: 'action.selected', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Person sx={{ fontSize: 15, color: 'text.secondary' }} />
-                </Box>
-              </Box>
+        {history.map((qa, idx) => (
+          <Box key={idx} sx={{ mb: 4 }}>
+            {/* The question, set as a heading — it is the thing being answered. */}
+            <Typography sx={{ fontFamily: DISPLAY, fontSize: '1.1rem', fontStyle: 'italic', lineHeight: 1.45, color: 'text.primary' }}>
+              {qa.question}
+            </Typography>
 
-              {/* AI */}
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                <Box sx={{ width: 28, height: 28, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(135deg, #7C3AED, #2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <SmartToy sx={{ fontSize: 15, color: 'white' }} />
-                </Box>
-                <Box sx={(theme) => ({
-                  maxWidth: '87%', px: 2, py: 1.75,
-                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: '4px 18px 18px 18px',
-                })}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700 }}>Legal EASE AI</Typography>
-                    <Box sx={{ px: 0.75, py: 0.15, borderRadius: '5px', fontSize: '0.62rem', fontWeight: 800, color: confColor, bgcolor: `${confColor}18`, border: `1px solid ${confColor}30` }}>
-                      {qa.confidence.toUpperCase()}
-                    </Box>
+            <Box sx={(t) => ({ mt: 1.75, pl: 2, borderLeft: `2px solid ${t.palette.divider}` })}>
+              <Typography variant="body2" sx={{ color: 'text.primary' }}>{qa.answer}</Typography>
+
+              {qa.source_section && (
+                <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'text.secondary' }}>
+                  In your document: {qa.source_section}
+                </Typography>
+              )}
+
+              {/* Authorities in the margin position — mono, stacked, quiet. */}
+              {qa.sources && qa.sources.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Eyebrow>Read against</Eyebrow>
+                  <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {qa.sources.slice(0, 4).map((s, i) => (
+                      <Typography
+                        key={i}
+                        title={[s.source, s.section, s.citation].filter(Boolean).join(' · ')}
+                        sx={{ fontFamily: MONO, fontSize: '0.68rem', color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {citeLine(s)}
+                        <Box component="span" sx={{ opacity: 0.6 }}> · {citeKind(s)}</Box>
+                      </Typography>
+                    ))}
                   </Box>
-                  <Typography variant="body2" sx={{ color: 'text.primary', lineHeight: 1.75 }}>{qa.answer}</Typography>
-                  {qa.source_section && (
-                    <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: 'rgba(124,58,237,0.07)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: '8px' }}>
-                      <Typography variant="caption" sx={{ color: 'primary.main', lineHeight: 1.5, display: 'block' }}>📄 {qa.source_section}</Typography>
-                    </Box>
-                  )}
                 </Box>
-              </Box>
-            </Box>
-          );
-        })}
+              )}
 
-        {/* Typing */}
+              <Typography sx={{ fontFamily: MONO, fontSize: '0.65rem', letterSpacing: '0.08em', textTransform: 'uppercase', mt: 2, color: (t) => bandColor(t, qa.confidence === 'high' ? 'low' : qa.confidence === 'low' ? 'high' : 'medium') }}>
+                {CONFIDENCE_NOTE[qa.confidence] || CONFIDENCE_NOTE.medium}
+              </Typography>
+            </Box>
+          </Box>
+        ))}
+
         {isLoading && (
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <Box sx={{ width: 28, height: 28, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(135deg, #7C3AED, #2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <SmartToy sx={{ fontSize: 15, color: 'white' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1 }}>
+            <Box sx={{ display: 'flex', gap: '4px' }}>
+              {[0, 160, 320].map((d) => (
+                <Box key={d} sx={{
+                  width: 5, height: 5, borderRadius: '50%', bgcolor: 'primary.main',
+                  '@keyframes pulseDot': { '0%,70%,100%': { opacity: 0.25 }, '35%': { opacity: 1 } },
+                  animation: `pulseDot 1.3s ${d}ms infinite ease-in-out`,
+                }} />
+              ))}
             </Box>
-            <Box sx={(theme) => ({ px: 2, py: 1.5, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', border: `1px solid ${theme.palette.divider}`, borderRadius: '4px 18px 18px 18px' })}>
-              <TypingIndicator />
-            </Box>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Looking through the clauses and the statutes…</Typography>
           </Box>
         )}
 
-        {/* Error */}
         {error && (
-          <Box sx={{ p: 2, borderRadius: '12px', bgcolor: 'rgba(220,38,38,0.07)', border: '1px solid rgba(220,38,38,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="body2" sx={{ color: 'error.main' }}>{error}</Typography>
-            <Button size="small" sx={{ color: 'error.main', minWidth: 'auto', p: 0.5 }} onClick={() => setError(null)}>✕</Button>
+          <Box role="alert" sx={(t) => ({ mt: 2, px: 2, py: 1.5, borderLeft: `2px solid ${t.palette.primary.main}` })}>
+            <Typography variant="body2" sx={{ color: 'primary.main' }}>{error}</Typography>
           </Box>
         )}
 
-        <div ref={messagesEndRef} />
+        <div ref={endRef} />
       </Box>
 
-      {/* Follow-up chips */}
-      {qaHistory.length > 0 && !isLoading && unusedSuggestions.length > 0 && (
-        <Box sx={(theme) => ({ px: 2, pb: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75, flexShrink: 0, borderTop: `1px solid ${theme.palette.divider}`, pt: 1.5 })}>
-          {unusedSuggestions.slice(0, 3).map(q => (
-            <Chip key={q} label={q} size="small" onClick={() => submit(q)} sx={{ cursor: 'pointer', bgcolor: 'rgba(124,58,237,0.07)', border: '1px solid rgba(124,58,237,0.18)', color: 'primary.main', '&:hover': { bgcolor: 'rgba(124,58,237,0.14)' }, fontSize: '0.72rem', transition: 'all 0.18s' }} />
+      {/* Follow-ups */}
+      {history.length > 0 && !isLoading && unused.length > 0 && (
+        <Box sx={(t) => ({ px: 3, py: 1.5, borderTop: `1px solid ${t.palette.divider}`, display: 'flex', flexWrap: 'wrap', gap: 1.5, flexShrink: 0 })}>
+          {unused.slice(0, 2).map((q) => (
+            <Button key={q} size="small" onClick={() => submit(q)} sx={{ p: 0, minWidth: 0, fontWeight: 400, fontSize: '0.78rem', color: 'text.secondary', '&:hover': { background: 'none', color: 'primary.main' } }}>
+              {q}
+            </Button>
           ))}
         </Box>
       )}
 
-      {/* Input */}
-      <Box component="form" onSubmit={handleSubmit} sx={(theme) => ({ p: 2, borderTop: `1px solid ${theme.palette.divider}`, display: 'flex', gap: 1.25, flexShrink: 0, bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.02)' })}>
+      {/* Ask */}
+      <Box
+        component="form"
+        onSubmit={(e) => { e.preventDefault(); submit(question); }}
+        sx={(t) => ({ p: 2, borderTop: `1px solid ${t.palette.divider}`, display: 'flex', gap: 1, flexShrink: 0 })}
+      >
         <TextField
           inputRef={inputRef}
-          fullWidth size="small"
-          placeholder="Ask a question about your document..."
+          fullWidth size="small" multiline maxRows={4}
+          placeholder="Ask about a clause…"
           value={question}
-          onChange={e => { setQuestion(e.target.value); if (error) setError(null); }}
-          onKeyDown={handleKeyDown}
+          onChange={(e) => { setQuestion(e.target.value); if (error) setError(null); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(question); } }}
           disabled={isLoading}
-          multiline maxRows={4}
-          sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.875rem' } }}
+          inputProps={{ 'aria-label': 'Ask about a clause' }}
+          sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.9rem' } }}
         />
-        <Button type="submit" variant="contained" disabled={!question.trim() || isLoading}
-          sx={{ minWidth: 44, px: 1.5, borderRadius: '12px', alignSelf: 'flex-end', height: 40 }}>
-          {isLoading ? <CircularProgress size={16} color="inherit" /> : <Send sx={{ fontSize: 18 }} />}
+        <Button type="submit" variant="contained" disabled={!question.trim() || isLoading} aria-label="Ask" sx={{ minWidth: 44, px: 0, alignSelf: 'flex-end', height: 40 }}>
+          {isLoading ? <CircularProgress size={15} color="inherit" /> : <ArrowUpward sx={{ fontSize: 18 }} />}
         </Button>
       </Box>
     </Box>

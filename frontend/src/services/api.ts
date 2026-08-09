@@ -10,7 +10,11 @@ import {
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || '/api',
-  timeout: 60000, // 60 seconds for document processing
+  // A cold container has to load InLegalBERT and open the vector index before it can
+  // answer, and a long agreement then costs several Gemini calls. 60s was short enough
+  // that the first upload after a scale-from-zero could time out client-side while the
+  // server was still working.
+  timeout: 180000,
   headers: {
     'Content-Type': 'application/json',
   },

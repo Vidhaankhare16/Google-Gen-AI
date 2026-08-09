@@ -56,6 +56,10 @@ frontend/node_modules/
 frontend/build/
 frontend/dist/
 
+# Built frontend copied into the backend for local production-mode testing.
+# The container image copies frontend/build directly, so this is never a source artifact.
+backend/static/
+
 # IDEs
 .vscode/
 .idea/

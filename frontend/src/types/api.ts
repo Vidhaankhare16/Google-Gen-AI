@@ -1,5 +1,14 @@
 // API response types for the Legal EASE application
 
+// A retrieved legal source (statute / precedent / red-flag / glossary) used to ground the answer.
+export interface LegalSource {
+  type?: string;        // statute | judgment | redflag | glossary | template
+  source?: string;      // e.g. "The Indian Contract Act, 1872"
+  section?: string;     // e.g. "Section 74"
+  citation?: string;    // e.g. "AIR 2013 SUPREME COURT 3037"
+  score?: number;       // retrieval similarity
+}
+
 export interface AnalysisResult {
   summary: string;
   key_points: string[];
@@ -7,6 +16,7 @@ export interface AnalysisResult {
   document_id: string;
   risk_score?: number;
   document_type?: string;
+  sources?: LegalSource[];
 }
 
 export interface DocumentInfo {
@@ -29,6 +39,7 @@ export interface QuestionAnswer {
   document_id: string;
   question: string;
   answered_at: string;
+  sources?: LegalSource[];
 }
 
 export interface QuestionResponse {
@@ -36,6 +47,7 @@ export interface QuestionResponse {
   answer?: string;
   source_section?: string;
   confidence?: 'high' | 'medium' | 'low';
+  sources?: LegalSource[];
   document_id?: string;
   question?: string;
   answered_at?: string;

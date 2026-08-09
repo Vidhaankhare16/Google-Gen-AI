@@ -1,234 +1,178 @@
-# Legal EASE - AI-Powered Legal Document Analysis - https://lexi-simplify-822987556610.us-central1.run.app/
+# Legal EASE — read the margin, not just the contract
 
-Transform complex legal documents into clear, actionable guidance with AI. Legal EASE helps you understand rental agreements, contracts, and terms of service before you sign.
+Legal EASE reads a contract you were handed, marks the clauses that work against you, and
+puts the Indian statute or judgment that says so right beside each finding. Answers are
+retrieved from a real corpus of Indian law rather than recalled by the model.
 
-## 🚀 Features
+## What it does
 
-- **📄 PDF Document Analysis**: Upload legal documents and get instant AI-powered analysis
-- **🤖 Interactive Q&A**: Ask questions about specific clauses and get detailed answers
-- **📱 WhatsApp Integration**: Analyze documents directly through WhatsApp
-- **⚠️ Risk Detection**: Identify concerning clauses and potential issues
-- **🔒 Secure Processing**: Documents are processed securely and automatically deleted
-- **🌐 Web Interface**: Clean, user-friendly web application
+- **Reads a PDF contract**, including scanned pages (Gemini Vision OCR fallback).
+- **Scores the risk 0–10** and lists what to push back on, worst first, with severities.
+- **Cites Indian law** — every finding and every chat answer is grounded in retrieved
+  statutes, Supreme Court judgments, red-flag clause patterns and definitions.
+- **Answers questions about your document** from the retrieved clauses, not the whole file.
+- **WhatsApp intake** (optional, via Twilio).
 
-## 🛠️ Technology Stack
+## How the RAG works
 
-- **Backend**: Python Flask, Google Gemini AI, Vertex AI
-- **Frontend**: React, TypeScript, Material-UI
-- **Document Processing**: PyPDF2, pdfplumber
-- **WhatsApp**: Twilio WhatsApp Business API
-- **Deployment**: Google Cloud Run, Docker
-- **Security**: Rate limiting, input validation, secure headers
+Two retrieval sources are combined per query:
 
-## 📋 Prerequisites
+1. **Your uploaded document** — chunked, embedded and indexed into a `user_docs` collection
+   at upload time, tagged with a `document_id`. Answers *"what does my contract say?"*
+2. **The legal knowledge base** (`legal_kb`, 9,063 vectors) — answers *"is this fair or
+   enforceable under Indian law?"* and supplies the citations.
 
-- Python 3.9+
-- Node.js 16+
-- Google Cloud Project with Vertex AI enabled
-- Gemini API key
-- Twilio account (optional, for WhatsApp demo)
+| Corpus | Chunks | Source |
+| --- | ---: | --- |
+| Statute sections | 1,791 | 11 bare Acts + the Constitution of India |
+| Judgment passages | 7,168 | Supreme Court of India |
+| Red-flag clauses | 30 | curated one-sided-clause patterns |
+| Glossary | 47 | plain-English definitions |
+| Model clauses | 27 | fair-alternative templates |
 
-## 🔧 Setup
+Everything is embedded with **InLegalBERT** (`law-ai/InLegalBERT`, 768-dim, mean-pooled and
+L2-normalised) and stored in **ChromaDB**, with a **Qdrant** mirror of the same vectors for
+the comparative study in [`docs/`](docs/).
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/yourusername/legal-ease.git
-cd legal-ease
-```
+Two details worth knowing:
 
-### 2. Environment Setup
-```bash
-# Run the setup script
-./setup-env.sh
+- KB retrieval runs **per `doc_type`** with a budget each, so the 7k judgment chunks can't
+  drown out the concise statute and red-flag chunks.
+- Whole-document analysis probes with **chunks spread across the document**, not the first
+  few thousand characters — probing the preamble only returns registration and stamp-duty
+  provisions instead of the law governing the risky clauses.
 
-# Edit backend/.env with your actual credentials
-nano backend/.env
-```
+## Stack
 
-### 3. Required Environment Variables
+- **Frontend** — React 18, TypeScript, MUI v5
+- **Backend** — Flask, Gunicorn
+- **Model** — Gemini 2.5 Flash, via **Vertex AI** (OAuth) or the AI Studio API (key)
+- **Retrieval** — InLegalBERT + ChromaDB (Qdrant interchangeable)
+- **Deployment** — Docker on Google Cloud Run
 
-Create `backend/.env` with:
-```env
-# Google Cloud & AI (Required)
-GEMINI_API_KEY=your-gemini-api-key
-GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-VERTEX_AI_LOCATION=us-central1
+## Setup
 
-# Flask Configuration
-FLASK_ENV=development
-PORT=8080
+### Prerequisites
 
-# WhatsApp Integration (Optional)
-TWILIO_ACCOUNT_SID=your-twilio-account-sid
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
-```
+Python 3.11+, Node 18+, and either a GCP project with Vertex AI enabled or a Gemini API key.
 
-### 4. Install Dependencies
+### Backend
 
-**Backend:**
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+venv\Scripts\activate          # Windows;  source venv/bin/activate elsewhere
+
 pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-rag.txt
 ```
 
-**Frontend:**
+`torch` comes from the CPU wheel index deliberately — the default index pulls ~2 GB of CUDA
+libraries that are never used.
+
+### Configuration
+
+Copy `backend/.env.example` to `backend/.env`. To call Gemini through **Vertex AI** (billed
+to your GCP project, no API key):
+
+```env
+AI_BACKEND=vertex
+GOOGLE_CLOUD_PROJECT=your-project-id
+VERTEX_AI_LOCATION=global
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+then authenticate locally with `gcloud auth application-default login`. On Cloud Run the
+attached service account is used instead and no credentials are stored anywhere.
+
+To use an **AI Studio key** instead, set `AI_BACKEND=studio` and `GEMINI_API_KEY=...`.
+
+> `VERTEX_AI_LOCATION=global` is the safe choice — regional endpoints do not serve every
+> model in every region.
+
+### Knowledge base
+
+The built index lives in `knowledge_base/vector_store/` and is gitignored (~230 MB). To
+rebuild it from the corpus:
+
+```bash
+python scripts/build_knowledge_base.py         # raw sources -> processed JSONL
+python scripts/index_knowledge_base.py --store both --recreate
+python scripts/query_kb.py "can my landlord forfeit my deposit?"   # sanity check
+```
+
+### Frontend
+
 ```bash
 cd frontend
 npm install
+npm start          # proxies /api to the backend on :8080
 ```
 
-## 🚀 Running Locally
+## Running locally
 
-### Development Mode
 ```bash
-# Terminal 1: Backend
+# Backend — note: not `python app.py`.
+# Flask's debug reloader segfaults with torch loaded in-process.
 cd backend
-source venv/bin/activate
-python app.py
+python -c "from app import app; app.run(host='127.0.0.1', port=8080, threaded=True)"
 
-# Terminal 2: Frontend
-cd frontend
-npm start
+# Frontend
+cd frontend && npm start
 ```
 
-### Production Mode (Docker)
-```bash
-docker-compose up --build
-```
+The first request loads InLegalBERT (~450 MB) and opens the Chroma index, so expect a slow
+first analysis and fast ones after.
 
-## 🌐 Deployment
-
-### Google Cloud Run
-```bash
-# Set environment variables
-export GEMINI_API_KEY=your-gemini-api-key
-export GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-export TWILIO_ACCOUNT_SID=your-twilio-sid
-export TWILIO_AUTH_TOKEN=your-twilio-token
-
-# Deploy
-./deploy-local-test.sh
-```
-
-### Manual Deployment
-```bash
-gcloud run deploy lexi-simplify \
-  --source . \
-  --region us-central1 \
-  --set-env-vars "GEMINI_API_KEY=$GEMINI_API_KEY,GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT"
-```
-
-## 📱 WhatsApp Demo Setup
-
-1. **Get Twilio Account**: Sign up at [Twilio Console](https://console.twilio.com/)
-2. **Access WhatsApp Sandbox**: Go to Messaging → Try it out → Send a WhatsApp message
-3. **Configure Webhook**: Set webhook URL to `https://your-app-url/whatsapp/webhook`
-4. **Test**: Send "join your-code" to the Twilio WhatsApp number
-
-See [WHATSAPP_SETUP.md](WHATSAPP_SETUP.md) for detailed instructions.
-
-## 🧪 Testing
+## Deploying to Cloud Run
 
 ```bash
-# Backend tests
-cd backend
-python -m pytest
+gcloud builds submit --tag gcr.io/PROJECT_ID/legal-ease:v1 \
+  --timeout=3600s --machine-type=e2-highcpu-8
 
-# API tests
-python test_api.py
-
-# WhatsApp integration tests
-export APP_URL=https://your-deployed-url
-python test_whatsapp.py
+gcloud run deploy legal-ease \
+  --image gcr.io/PROJECT_ID/legal-ease:v1 \
+  --region us-central1 --allow-unauthenticated \
+  --memory 4Gi --cpu 2 --timeout 300 --concurrency 8 \
+  --set-env-vars "AI_BACKEND=vertex,GOOGLE_CLOUD_PROJECT=PROJECT_ID,VERTEX_AI_LOCATION=global,FLASK_ENV=production"
 ```
 
-## 📖 API Documentation
+The runtime service account needs `roles/aiplatform.user`.
 
-### Analyze Document
+Two deployment details that matter:
+
+- **`.gcloudignore` must exist.** Without it gcloud falls back to `.gitignore`, which
+  excludes `knowledge_base/vector_store` — the index the image has to contain.
+- **One Gunicorn worker, several threads.** Each worker would load its own copy of
+  InLegalBERT and its own Chroma client; concurrency comes from threads instead, which
+  suits requests dominated by waiting on Gemini.
+
+## API
+
 ```bash
-POST /api/analyze
-Content-Type: multipart/form-data
-
-# Upload PDF file
-curl -X POST -F "file=@document.pdf" https://your-app-url/api/analyze
+POST /api/analyze                       # multipart PDF -> analysis + sources
+POST /api/question                      # {document_id, question} -> answer + sources
+DELETE /api/document/delete/<id>        # erase a document immediately
+GET  /api/health
+POST /whatsapp/webhook                  # Twilio inbound
 ```
 
-### Ask Question
-```bash
-POST /api/question
-Content-Type: application/json
+Both analysis and answers include a `sources[]` array of `{type, source, section, citation,
+score}` — deduplicated by authority, so a long judgment matching on several chunks is
+listed once.
 
-{
-  "question": "What is the monthly rent?",
-  "document_id": "doc-id-from-analysis"
-}
-```
+## Security
 
-### WhatsApp Webhook
-```bash
-POST /whatsapp/webhook
-# Handles incoming WhatsApp messages from Twilio
-```
+Rate limiting, PDF validation, security headers with a CSP, in-memory document storage with
+session expiry, and vector-store eviction wired to document deletion so chunks never
+outlive the document.
 
-## 🔒 Security Features
+## License
 
-- **Rate Limiting**: Prevents API abuse
-- **Input Validation**: Validates all user inputs
-- **Secure Headers**: CORS, CSP, and security headers
-- **File Validation**: Ensures only valid PDFs are processed
-- **Auto-cleanup**: Documents automatically deleted after processing
-- **Environment Variables**: No hardcoded secrets
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   React Web     │    │   WhatsApp      │    │   Python Flask  │
-│   Frontend      │◄──►│   Integration   │◄──►│   Backend       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                        │
-                                               ┌─────────────────┐
-                                               │   Google        │
-                                               │   Gemini AI     │
-                                               └─────────────────┘
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes
-4. Add tests for new functionality
-5. Commit changes: `git commit -am 'Add feature'`
-6. Push to branch: `git push origin feature-name`
-7. Submit a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment guide
-- **WhatsApp Setup**: See [WHATSAPP_SETUP.md](WHATSAPP_SETUP.md)
-- **Issues**: Create an issue on GitHub
-
-## 🎯 Roadmap
-
-- [ ] Multi-language support
-- [ ] Document comparison features
-- [ ] Legal template library
-- [ ] Advanced analytics dashboard
-- [ ] Mobile app (iOS/Android)
-- [ ] Enterprise features
-
-## ⭐ Star History
-
-If you find this project helpful, please consider giving it a star on GitHub!
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Legal EASE** - Making legal documents accessible to everyone 📚✨
+**Legal EASE explains documents. It is not a substitute for a lawyer, and nothing it
+produces is legal advice.**

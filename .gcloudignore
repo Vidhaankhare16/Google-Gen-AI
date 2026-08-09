@@ -1,0 +1,46 @@
+# Upload set for `gcloud builds submit` / `gcloud run deploy --source`.
+#
+# This file must exist: without it gcloud falls back to .gitignore, which excludes
+# knowledge_base/vector_store — the prebuilt Chroma index the image has to contain.
+
+.git
+.gitignore
+
+# Dependencies and build output (rebuilt inside the image)
+node_modules/
+frontend/node_modules/
+frontend/build/
+backend/venv/
+**/__pycache__/
+**/*.py[cod]
+
+# Secrets — configuration is passed as Cloud Run env vars, never baked into the image
+.env
+.env.*
+backend/.env
+backend/.env.*
+*-key.json
+*credentials*.json
+
+# Knowledge base: only the built Chroma index is needed at query time. The raw corpus,
+# the processed JSONL and the Qdrant mirror are offline build artifacts (~130 MB).
+knowledge_base/raw/
+knowledge_base/processed/
+knowledge_base/test_documents/
+knowledge_base/vector_store/qdrant/
+
+# Offline tooling, study artifacts and docs
+scripts/
+docs/
+*.md
+test_*.py
+check-deployment.py
+*.sh
+*.bat
+
+# Local editor / OS noise
+.vscode/
+.idea/
+.kiro/
+.DS_Store
+Thumbs.db

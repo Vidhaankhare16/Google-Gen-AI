@@ -16,7 +16,7 @@ COPY frontend/tsconfig.json ./
 
 RUN npm run build
 
-# ── Stage 2: Python backend + built frontend ────────────────────────────────
+# ── Stage 2: Python backend + RAG stack + built frontend ────────────────────
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -36,12 +36,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies before copying source (better layer caching)
-COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies before copying source (better layer caching).
+# torch comes from the CPU wheel index so we don't pull ~2GB of CUDA libraries.
+COPY backend/requirements.txt backend/requirements-rag.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements-rag.txt
+
+# Bake the InLegalBERT weights into the image so cold starts never hit HuggingFace.
+ENV HF_HOME=/app/hf_cache
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_HUB_OFFLINE=1
+RUN HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c "\
+from transformers import AutoTokenizer, AutoModel; \
+AutoTokenizer.from_pretrained('law-ai/InLegalBERT'); \
+AutoModel.from_pretrained('law-ai/InLegalBERT')"
 
 # Copy backend source
 COPY backend/ ./
+
+# Legal knowledge base: the prebuilt Chroma index (~9k vectors of Indian statutes,
+# judgments, red-flags and glossary entries). Qdrant/raw/processed are excluded by
+# .dockerignore — only the Chroma index is needed at query time.
+COPY knowledge_base/vector_store/chroma ./knowledge_base/vector_store/chroma
+ENV VECTOR_DB=chroma
+ENV CHROMA_PATH=/app/knowledge_base/vector_store/chroma
 
 # Copy React build output from Stage 1
 COPY --from=frontend-build /app/frontend/build ./static/
@@ -53,10 +72,13 @@ USER appuser
 
 EXPOSE 8080
 
-# gunicorn: 2 workers is appropriate for Cloud Run (CPU-bound AI calls)
+# One worker only: each worker would load its own copy of InLegalBERT (~450MB) and
+# its own Chroma client. Concurrency comes from threads instead, which is the right
+# shape here because requests are dominated by waiting on the Gemini API.
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:8080", \
-     "--workers", "2", \
+     "--workers", "1", \
+     "--threads", "8", \
      "--timeout", "300", \
      "--keep-alive", "5", \
      "--access-logfile", "-", \
