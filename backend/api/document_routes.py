@@ -133,6 +133,7 @@ def get_storage_stats():
                 'total_documents': stats.get('total_documents', 0),
                 'oldest_document': stats.get('oldest_document').isoformat() + 'Z' if stats.get('oldest_document') else None,
                 'newest_document': stats.get('newest_document').isoformat() + 'Z' if stats.get('newest_document') else None,
+                'evicted_count': stats.get('evicted_count', 0),
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             }
         }), 200
